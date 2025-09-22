@@ -1,0 +1,23 @@
+{
+  "development": {
+    "username": "pmauser",
+    "password": "LOGIndiCorp@20190307",
+    "database": "TicketingTool",
+    "host": "148.135.138.69",
+    "dialect": "mysql"
+  },
+  "test": {
+    "username": "pmauser",
+    "password": "LOGIndiCorp@20190307",
+    "database": "TicketingTool",
+    "host": "148.135.138.69",
+    "dialect": "mysql"
+  },
+  "production": {
+    "username": "pmauser",
+    "password": "LOGIndiCorp@20190307",
+    "database": "TicketingTool",
+    "host": "148.135.138.69",
+    "dialect": "mysql"
+  }
+}
