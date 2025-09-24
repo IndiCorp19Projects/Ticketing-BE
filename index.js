@@ -1,44 +1,60 @@
-'use strict';
-
-require('dotenv').config(); // ✅ Load .env variables
 const express = require('express');
 const bodyParser = require('body-parser');
-const db = require('./models'); // Sequelize index.js
+require('dotenv').config();
+
+const cors = require("cors");
+const cookieParser = require("cookie-parser");
+
+const { sequelize } = require('./models');
+const authRoutes = require('./routes/authRoutes');
+const ticketRoutes = require('./routes/ticketRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// ✅ Middleware
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-// ✅ Simple test route
-app.get('/', (req, res) => {
-  res.send('Server is running 🚀');
-});
 
-// ✅ Example route using User model
-app.get('/users', async (req, res) => {
-  try {
-    const users = await db.User.findAll();
-    res.json(users);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Something went wrong' });
-  }
-});
-
-// ✅ Sync database & start server
-db.sequelize.authenticate()
-  .then(() => {
-    console.log('✅ Database connected...');
-    return db.sequelize.sync(); // create tables if they don’t exist
+// ✅ Allow frontend (http://localhost:5173 for Vite)
+app.use(
+  cors({
+    origin: "http://localhost:3000", // frontend URL
+    credentials: true, // ✅ allow cookies
   })
+);
+
+
+app.get("/api/check", (req, res) => {
+  console.log(req.cookies); // should log { token: "..." }
+  res.json({ cookies: req.cookies });
+});
+
+
+
+
+app.use('/api/auth', authRoutes);
+app.use('/api/ticket', ticketRoutes);
+app.use('/api/admin', adminRoutes);
+
+app.get('/', (req, res) => res.send('Ticketing system API running'));
+
+app.use((err, req, res, next) => {
+  console.error('Unhandled error', err);
+  res.status(500).json({ message: 'Internal server error' });
+});
+
+const PORT = process.env.PORT || 5000;
+
+sequelize
+  .sync({ alter: false })
   .then(() => {
+    console.log('Database synced');
     app.listen(PORT, () => {
-      console.log(`🚀 Server is running on http://localhost:${PORT}`);
+      console.log(`Server running on port ${PORT}`);
     });
   })
   .catch((err) => {
-    console.error('❌ Unable to connect to the database:', err);
+    console.error('DB sync error', err);
   });
