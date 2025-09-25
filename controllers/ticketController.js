@@ -1,4 +1,6 @@
-const { Ticket, TicketReply, User } = require('../models');
+// const { Ticket, TicketReply, User } = require('../models');
+
+const { Ticket, TicketReply, TicketImage, sequelize , User } = require('../models'); // TicketImage may be undefined if model not added
 
 const ensureOwnerOrAdmin = async (req, ticket) => {
   if (!ticket) return false;
@@ -6,37 +8,39 @@ const ensureOwnerOrAdmin = async (req, ticket) => {
   return ticket.user_id === req.user.id;
 };
 
-exports.raiseTicket = async (req, res) => {
-  try {
-    const { module, sub_module, category, comment, screenshot_url } = req.body;
-    if (!module || !category || !comment) {
-      return res.status(400).json({ message: 'module, category, comment are required' });
-    }
+// exports.raiseTicket = async (req, res) => {
+//   try {
+//     const { module, sub_module, category, comment, screenshot_url } = req.body;
 
-    const ticket = await Ticket.create({
-      user_id: req.user.id,
-      module,
-      sub_module,
-      category,
-      comment,
-      screenshot_url,
-      status: 'Open',
-    });
+//     console.log('raiseTicket body:', req.body);
+//     if (!module || !category || !comment) {
+//       return res.status(400).json({ message: 'module, category, comment are required' });
+//     }
 
-    // Add system reply to indicate created (optional)
-    await TicketReply.create({
-      ticket_id: ticket.ticket_id,
-      sender_id: req.user.id,
-      sender_type: 'system',
-      message: 'Ticket created by user.',
-    });
+//     const ticket = await Ticket.create({
+//       user_id: req.user.id,
+//       module,
+//       sub_module,
+//       category,
+//       comment,
+//       screenshot_url,
+//       status: 'Open',
+//     });
 
-    return res.status(201).json({ message: 'Ticket raised', ticket });
-  } catch (err) {
-    console.error('raiseTicket', err);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
+//     // Add system reply to indicate created (optional)
+//     await TicketReply.create({
+//       ticket_id: ticket.ticket_id,
+//       sender_id: req.user.id,
+//       sender_type: 'system',
+//       message: 'Ticket created by user.',
+//     });
+
+//     return res.status(201).json({ message: 'Ticket raised', ticket });
+//   } catch (err) {
+//     console.error('raiseTicket', err);
+//     return res.status(500).json({ message: 'Internal server error' });
+//   }
+// };
 
 exports.getUserTickets = async (req, res) => {
   try {
@@ -274,6 +278,97 @@ exports.adminUpdateStatus = async (req, res) => {
     return res.json({ message: 'Status updated', ticket });
   } catch (err) {
     console.error('adminUpdateStatus', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+// controllers/ticketController.js
+
+
+exports.raiseTicket = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    // DEBUG: log what multer parsed
+    console.log('req.body keys:', Object.keys(req.body));
+    console.log('req.files count:', (req.files && req.files.length) || 0);
+
+    // Accept different field names to be tolerant
+    const moduleVal = req.body.module ?? req.body.modules;
+    const sub_module = req.body.sub_module ?? req.body.submodule ?? req.body.subModule ?? '';
+    const category = req.body.category;
+    const comment = req.body.comment ?? req.body.comments ?? req.body.description ?? '';
+
+    if (!moduleVal || !category || !comment) {
+      await t.rollback();
+      return res.status(400).json({ message: 'module, category and comment are required' });
+    }
+
+    // Create Ticket
+    const ticket = await Ticket.create({
+      user_id: req.user && (req.user.id ?? req.user.user_id),
+      module: moduleVal,
+      sub_module,
+      category,
+      comment,
+      status: 'Open'
+    }, { transaction: t });
+
+    // Save uploaded files: prefer TicketImage table if present
+    if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+      if (TicketImage) {
+        // persist all uploaded files into ticket_images table
+        const imagesToCreate = req.files.map((file) => ({
+          ticket_id: ticket.ticket_id ?? ticket.id,
+          filename: file.originalname,
+          mimetype: file.mimetype,
+          data: file.buffer
+        }));
+        await TicketImage.bulkCreate(imagesToCreate, { transaction: t });
+      } else {
+        // fallback: store first file into Ticket.screenshot_url (single BLOB)
+        const file = req.files[0];
+        ticket.screenshot_url = file.buffer; // BLOB
+        await ticket.save({ transaction: t });
+      }
+    } else if (req.body.screenshot_url) {
+      // If frontend sends base64 data URL in screenshot_url, parse it
+      // Accepts format: data:<mimetype>;base64,<data>
+      const dataUrl = req.body.screenshot_url;
+      const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
+      if (m) {
+        const b64 = m[2];
+        const buffer = Buffer.from(b64, 'base64');
+        if (TicketImage) {
+          await TicketImage.create({
+            ticket_id: ticket.ticket_id ?? ticket.id,
+            filename: req.body.screenshot_name ?? `upload.${m[1].split('/')[1]}`,
+            mimetype: m[1],
+            data: buffer
+          }, { transaction: t });
+        } else {
+          ticket.screenshot_url = buffer;
+          await ticket.save({ transaction: t });
+        }
+      }
+    }
+
+    // Initial system reply
+    await TicketReply.create({
+      ticket_id: ticket.ticket_id ?? ticket.id,
+      sender_id: req.user && (req.user.id ?? req.user.user_id),
+      sender_type: 'system',
+      message: 'Ticket created by user.'
+    }, { transaction: t });
+
+    await t.commit();
+
+    // Return created ticket (without BLOB data)
+    const out = ticket.toJSON ? ticket.toJSON() : ticket;
+    return res.status(201).json({ message: 'Ticket raised', ticket: out });
+  } catch (err) {
+    console.error('raiseTicket error:', err);
+    await t.rollback();
     return res.status(500).json({ message: 'Internal server error' });
   }
 };

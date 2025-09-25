@@ -2,12 +2,14 @@ const express = require('express');
 const router = express.Router();
 const ticketController = require('../controllers/ticketController');
 const authMiddleware = require('../middleware/authMiddleware');
+const upload = require('../middleware/uploadMemory'); // NEW
 
 // All user endpoints require authentication
 router.use(authMiddleware);
 
-// raise ticket
-router.post('/raise', ticketController.raiseTicket);
+
+
+router.post('/raise', upload.array('files'), ticketController.raiseTicket);
 
 // get user's tickets
 router.get('/my-tickets', ticketController.getUserTickets);
@@ -28,3 +30,8 @@ router.post('/:ticketId/decline', ticketController.userDeclineClosure);
 router.post('/:ticketId/reopen', ticketController.userReopenTicket);
 
 module.exports = router;
+
+
+
+
+

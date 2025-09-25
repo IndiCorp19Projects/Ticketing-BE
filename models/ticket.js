@@ -28,8 +28,8 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       screenshot_url: {
-        type: DataTypes.STRING(255),
-        allowNull: true,
+        type: DataTypes.BLOB('long'), // LONGBLOB
+      allowNull: true
       },
       status: {
         type: DataTypes.ENUM('Open', 'In Progress', 'Resolved', 'Pending Closure', 'Closed', 'Reopened'),
