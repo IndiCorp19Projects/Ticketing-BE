@@ -1,3 +1,4 @@
+// models/user.js
 const pwd = require('../utils/passwordHashing');
 
 module.exports = (sequelize, DataTypes) => {
@@ -41,7 +42,7 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: true,
       },
       role_name: {
-        type: DataTypes.STRING(50), // 'user' or 'admin'
+        type: DataTypes.STRING(50),
         allowNull: false,
         defaultValue: 'user',
       },
@@ -72,6 +73,11 @@ module.exports = (sequelize, DataTypes) => {
       },
     }
   );
+
+  User.associate = (models) => {
+    User.hasMany(models.Ticket, { foreignKey: 'user_id', as: 'tickets' });
+    User.hasMany(models.TicketReply, { foreignKey: 'sender_id', as: 'sentReplies' });
+  };
 
   return User;
 };

@@ -1,5 +1,4 @@
-const fs = require('fs');
-const path = require('path');
+// models/index.js
 const Sequelize = require('sequelize');
 require('dotenv').config();
 
@@ -13,35 +12,27 @@ const sequelize = new Sequelize(db.database, db.username, db.password, {
 
 const dbObj = { sequelize, Sequelize };
 
+// explicit model imports
 const User = require('./user')(sequelize, Sequelize.DataTypes);
 const Ticket = require('./ticket')(sequelize, Sequelize.DataTypes);
 const TicketReply = require('./ticketReply')(sequelize, Sequelize.DataTypes);
-
-
 const TicketImage = require('./TicketImage')(sequelize, Sequelize.DataTypes);
+const SLA = require('./SLA')(sequelize, Sequelize.DataTypes);
 
-
-
-
-
-// associations
-User.hasMany(Ticket, { foreignKey: 'user_id', as: 'tickets' });
-Ticket.belongsTo(User, { foreignKey: 'user_id', as: 'creator' });
-
-Ticket.hasMany(TicketReply, { foreignKey: 'ticket_id', as: 'replies' });
-TicketReply.belongsTo(Ticket, { foreignKey: 'ticket_id', as: 'ticket' });
-
-User.hasMany(TicketReply, { foreignKey: 'sender_id', as: 'sentReplies' });
-TicketReply.belongsTo(User, { foreignKey: 'sender_id', as: 'sender' });
-
-
-// Associations (after registering)
-Ticket.hasMany(TicketImage, { foreignKey: 'ticket_id', as: 'images' });
-TicketImage.belongsTo(Ticket, { foreignKey: 'ticket_id', as: 'ticket' });
-
+// attach to db object
 dbObj.User = User;
 dbObj.Ticket = Ticket;
 dbObj.TicketReply = TicketReply;
 dbObj.TicketImage = TicketImage;
+dbObj.SLA = SLA;
+
+// call associate on each model if present (once)
+Object.keys(dbObj).forEach((key) => {
+  if (key === 'sequelize' || key === 'Sequelize') return;
+  const model = dbObj[key];
+  if (model && typeof model.associate === 'function') {
+    model.associate(dbObj);
+  }
+});
 
 module.exports = dbObj;

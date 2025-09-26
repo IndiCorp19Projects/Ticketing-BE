@@ -46,7 +46,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 sequelize
-  .sync({ alter: false })
+  .sync({ alter: false }) // Use { force: true } for development only
   .then(() => {
     console.log('Database synced');
     app.listen(PORT, () => {

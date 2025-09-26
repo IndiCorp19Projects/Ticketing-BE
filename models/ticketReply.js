@@ -1,3 +1,4 @@
+// models/ticketReply.js
 module.exports = (sequelize, DataTypes) => {
   const TicketReply = sequelize.define(
     'TicketReply',
@@ -34,6 +35,11 @@ module.exports = (sequelize, DataTypes) => {
       timestamps: false,
     }
   );
+
+  TicketReply.associate = (models) => {
+    TicketReply.belongsTo(models.Ticket, { foreignKey: 'ticket_id', as: 'ticket' });
+    TicketReply.belongsTo(models.User, { foreignKey: 'sender_id', as: 'sender' });
+  };
 
   return TicketReply;
 };

@@ -5,7 +5,7 @@ module.exports = (sequelize, DataTypes) => {
     ticket_id: { type: DataTypes.INTEGER, allowNull: false },
     filename: { type: DataTypes.STRING(255), allowNull: true },
     mimetype: { type: DataTypes.STRING(100), allowNull: true },
-    data: { type: DataTypes.BLOB('long'), allowNull: true }, // LONGBLOB
+    data: { type: DataTypes.BLOB('long'), allowNull: true },
     created_on: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
   }, {
     tableName: 'ticket_images',
@@ -13,7 +13,7 @@ module.exports = (sequelize, DataTypes) => {
   });
 
   TicketImage.associate = (models) => {
-    TicketImage.belongsTo(models.Ticket, { foreignKey: 'ticket_id' });
+    TicketImage.belongsTo(models.Ticket, { foreignKey: 'ticket_id', as: 'ticket' });
   };
 
   return TicketImage;
