@@ -1,44 +1,80 @@
 // utils/mailer.js
 const nodemailer = require('nodemailer');
-require('dotenv').config();
 
-const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
-const SMTP_USER = process.env.SMTP_USER;
-const SMTP_PASS = process.env.SMTP_PASS;
-const FROM_EMAIL = process.env.EMAIL_FROM || 'no-reply@example.com';
-const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Ticketing System';
+const {
+  SMTP_HOST,
+  SMTP_PORT,
+  SMTP_USER,
+  SMTP_PASS,
+  EMAIL_FROM,
+  EMAIL_FROM_NAME,
+  NODE_ENV
+} = process.env;
 
-// create transporter
+const port = Number(SMTP_PORT || 587);
+
+// Build transporter with STARTTLS (port 587) or implicit TLS (port 465)
 const transporter = nodemailer.createTransport({
-  host: SMTP_HOST,
-  port: SMTP_PORT,
-  secure: SMTP_PORT === 465, // true for 465, false for other ports
-  auth: SMTP_USER ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
-  // tls: { rejectUnauthorized: false } // if needed in dev
+  host: SMTP_HOST || 'smtp.gmail.com',
+  port: port,
+  secure: port === 465, // true for 465, false for 587 (STARTTLS)
+  auth: SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
+  tls: {
+    // allow self-signed certs if necessary (set to false for production)
+    rejectUnauthorized: false
+  },
+  // sensible timeouts (milliseconds)
+  connectionTimeout: 15000, // 15s
+  greetingTimeout: 15000,
+  socketTimeout: 15000
 });
 
-// verify connection (optional)
-transporter.verify().then(() => {
-  console.log('Mailer: SMTP connection OK');
-}).catch((err) => {
-  console.warn('Mailer: SMTP verify failed', err && err.message ? err.message : err);
-});
+// verify transport on start (non-blocking)
+(async function verifyTransport() {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    console.warn('Mailer: SMTP credentials not configured (EMAIL will be logged to console).');
+    return;
+  }
+  try {
+    await transporter.verify();
+    console.info('Mailer: SMTP verified OK');
+  } catch (err) {
+    console.error('Mailer: SMTP verify failed', err && err.message ? err.message : err);
+  }
+})();
 
-// simple send helper
-async function sendMail({ to, cc, bcc, subject, text, html }) {
-  const mailOptions = {
-    from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
-    to,
-    cc,
-    bcc,
-    subject,
-    text,
-    html
-  };
+/**
+ * sendMail({ to, subject, html, text, cc, bcc })
+ * - to can be string or comma-separated
+ */
+async function sendMail({ to, subject, html, text, cc, bcc }) {
+  // fall back to console logging if transporter not configured
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    console.warn('Mailer: SMTP not fully configured — fallback to console.log');
+    console.log('MAIL =>', { to, subject, text, html, cc, bcc });
+    return { fallback: true };
+  }
 
-  const info = await transporter.sendMail(mailOptions);
-  return info;
+  const from = EMAIL_FROM_NAME ? `"${EMAIL_FROM_NAME}" <${EMAIL_FROM}>` : EMAIL_FROM || SMTP_USER;
+
+  try {
+    const info = await transporter.sendMail({
+      from,
+      to,
+      cc,
+      bcc,
+      subject,
+      text,
+      html
+    });
+    // nodemailer returns messageId etc.
+    return info;
+  } catch (err) {
+    // log but do not throw to break the app flow
+    console.error('Mailer: sendMail error', err && err.message ? err.message : err);
+    // return error shape for callers if they want to inspect
+    return { error: true, message: err && err.message ? err.message : String(err) };
+  }
 }
 
-module.exports = { sendMail };
+module.exports = { sendMail, transporter };
