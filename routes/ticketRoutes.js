@@ -18,7 +18,10 @@ router.get('/my-tickets', ticketController.getUserTickets);
 router.get('/:ticketId', ticketController.getTicketById);
 
 // user reply
-router.post('/:ticketId/reply', ticketController.replyToTicket);
+router.post('/:ticketId/reply',  upload.array('files'), ticketController.replyToTicket);
+
+
+// router.post('/:ticketId/reply', ticketController.replyToTicket);
 
 // user approve closure
 router.post('/:ticketId/approve', ticketController.userApproveClosure);
