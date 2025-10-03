@@ -18,6 +18,12 @@ const Ticket = require('./ticket')(sequelize, Sequelize.DataTypes);
 const TicketReply = require('./ticketReply')(sequelize, Sequelize.DataTypes);
 const TicketImage = require('./TicketImage')(sequelize, Sequelize.DataTypes);
 const SLA = require('./SLA')(sequelize, Sequelize.DataTypes);
+const Document = require('./Document')(sequelize, Sequelize.DataTypes); 
+
+
+// const Category = require('./Category')(sequelize, Sequelize.DataTypes);
+// const SubCategory = require('./SubCategory')(sequelize, Sequelize.DataTypes);
+// const IssueType = require('./IssueType')(sequelize, Sequelize.DataTypes);
 
 // attach to db object
 dbObj.User = User;
@@ -25,6 +31,12 @@ dbObj.Ticket = Ticket;
 dbObj.TicketReply = TicketReply;
 dbObj.TicketImage = TicketImage;
 dbObj.SLA = SLA;
+dbObj.Document = Document;
+
+// dbObj.Category = Category;
+// dbObj.SubCategory = SubCategory;
+// dbObj.Document = IssueType;
+
 
 // call associate on each model if present (once)
 Object.keys(dbObj).forEach((key) => {

@@ -7,7 +7,12 @@ module.exports = (sequelize, DataTypes) => {
       user_id: { type: DataTypes.INTEGER, allowNull: false },
       module: { type: DataTypes.STRING(100), allowNull: false },
       sub_module: { type: DataTypes.STRING(100), allowNull: true },
-      category: { type: DataTypes.STRING(100), allowNull: false },
+      category: { type: DataTypes.STRING(100), allowNull: false }, // This will store issue_type
+      
+      // NEW COLUMNS
+      issue_name: { type: DataTypes.STRING(255), allowNull: true }, // Stores custom issue name when category is "Other"
+      priority: { type: DataTypes.STRING(50), allowNull: false, defaultValue: 'Medium' }, // Stores priority
+      
       comment: { type: DataTypes.TEXT, allowNull: false },
       screenshot_url: { type: DataTypes.BLOB('long'), allowNull: true },
       status: {
@@ -47,6 +52,15 @@ module.exports = (sequelize, DataTypes) => {
     // SLA
     if (models.SLA) {
       Ticket.belongsTo(models.SLA, { foreignKey: 'sla_id', as: 'sla' });
+    }
+
+    if (models.Document) {
+      Ticket.hasMany(models.Document, {
+        foreignKey: 'linked_id',
+        as: 'documents',
+        scope: { table_name: 'ticket' },
+        constraints: false
+      });
     }
   };
 
