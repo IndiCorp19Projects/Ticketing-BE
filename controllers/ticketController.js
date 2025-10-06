@@ -135,6 +135,9 @@ exports.replyToTicket = async (req, res) => {
     const { message: rawMessage, status: requestedStatus, screenshot_url } = req.body;
     const files = req.files && Array.isArray(req.files) ? req.files : [];
 
+
+    console.log( rawMessage , requestedStatus , screenshot_url )
+
     // require at least one of message/files/status/screenshot
     if ((!rawMessage || String(rawMessage).trim() === '') && files.length === 0 && !requestedStatus && !screenshot_url) {
       await t.rollback();

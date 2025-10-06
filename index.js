@@ -14,6 +14,7 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const subCategoryRoutes = require('./routes/subCategoryRoutes');
 const priorityRoutes = require('./routes/priorityRoutes');
 const issueTypeRoutes = require('./routes/issueTypeRoutes');
+const slaRoutes = require('./routes/slaRoutes');
 
 const app = express();
 
@@ -44,6 +45,7 @@ app.use('/api/admin/categories', categoryRoutes);
 app.use('/api/admin/subcategories', subCategoryRoutes);
 app.use('/api/admin/priorities', priorityRoutes);
 app.use('/api/admin/issuetypes', issueTypeRoutes);
+app.use('/api/admin/slas', slaRoutes);
 
 
 app.get('/', (req, res) => res.send('Ticketing system API running'));
