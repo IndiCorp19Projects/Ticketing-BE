@@ -5,18 +5,25 @@ module.exports = (sequelize, DataTypes) => {
     {
       ticket_id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
       user_id: { type: DataTypes.INTEGER, allowNull: false },
-      module: { type: DataTypes.STRING(100), allowNull: false },
+
+      // link to category/subcategory/issuetype
+      category_id: { type: DataTypes.INTEGER, allowNull: true },
+      subcategory_id: { type: DataTypes.INTEGER, allowNull: true },
+      issue_type_id: { type: DataTypes.INTEGER, allowNull: true },
+
+      // custom issue name when IssueType = Other
+      issue_name: { type: DataTypes.STRING(255), allowNull: true },
+
+      // priority (FK + textual denormalized fallback)
+      priority_id: { type: DataTypes.INTEGER, allowNull: true },
+      priority: { type: DataTypes.STRING(50), allowNull: false, defaultValue: 'Medium' },
+
+      module: { type: DataTypes.STRING(100), allowNull: true }, // legacy / optional
       sub_module: { type: DataTypes.STRING(100), allowNull: true },
-      category: { type: DataTypes.STRING(100), allowNull: false }, // This will store issue_type
-      
-      // NEW COLUMNS
-      issue_name: { type: DataTypes.STRING(255), allowNull: true }, // Stores custom issue name when category is "Other"
-      priority: { type: DataTypes.STRING(50), allowNull: false, defaultValue: 'Medium' }, // Stores priority
-      
       comment: { type: DataTypes.TEXT, allowNull: false },
       screenshot_url: { type: DataTypes.BLOB('long'), allowNull: true },
       status: {
-        type: DataTypes.ENUM('Open', 'In Progress', 'Resolved', 'Pending Closure', 'Closed', 'Reopened'),
+        type: DataTypes.ENUM('Open', 'Pending', 'Resolved', 'Closed'),
         defaultValue: 'Open'
       },
       prev_status: { type: DataTypes.STRING(100), allowNull: true },
@@ -38,18 +45,20 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   Ticket.associate = (models) => {
-    // ticket creator
     Ticket.belongsTo(models.User, { foreignKey: 'user_id', as: 'creator' });
 
-    // replies
+    Ticket.belongsTo(models.Category, { foreignKey: 'category_id', as: 'category_obj', constraints: false });
+    Ticket.belongsTo(models.SubCategory, { foreignKey: 'subcategory_id', as: 'subcategory_obj', constraints: false });
+    Ticket.belongsTo(models.IssueType, { foreignKey: 'issue_type_id', as: 'issue_type_obj', constraints: false });
+
+    Ticket.belongsTo(models.Priority, { foreignKey: 'priority_id', as: 'priority_obj', constraints: false });
+
     Ticket.hasMany(models.TicketReply, { foreignKey: 'ticket_id', as: 'replies' });
 
-    // images (if model exists)
     if (models.TicketImage) {
       Ticket.hasMany(models.TicketImage, { foreignKey: 'ticket_id', as: 'images' });
     }
 
-    // SLA
     if (models.SLA) {
       Ticket.belongsTo(models.SLA, { foreignKey: 'sla_id', as: 'sla' });
     }

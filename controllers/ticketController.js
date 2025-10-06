@@ -1,5 +1,6 @@
 // controllers/ticketController.js
-const { Ticket, TicketReply, Document, sequelize, User, SLA } = require('../models');
+// const { Ticket, TicketReply, Document, sequelize, User, SLA } = require('../models');
+const { Ticket, TicketReply, Document, sequelize, User, SLA, Category, SubCategory, IssueType, Priority } = require('../models');
 const { sendMail } = require('../utils/mailer');
 const { ticketCreatedTemplate, ticketReplyTemplate, ticketStatusChangedTemplate } = require('../utils/emailTemplates');
 
@@ -358,6 +359,175 @@ exports.replyToTicket = async (req, res) => {
   }
 };
 
+
+
+
+// exports.raiseTicket = async (req, res) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     // files (optional)
+//     const files = req.files && Array.isArray(req.files) ? req.files : [];
+
+//     // prefer ids from frontend
+//     const category_id = req.body.category_id ? parseInt(req.body.category_id, 10) : null;
+//     const subcategory_id = req.body.subcategory_id ? parseInt(req.body.subcategory_id, 10) : null;
+//     const issue_type_id = req.body.issue_type_id ? parseInt(req.body.issue_type_id, 10) : null;
+
+//     // fallback to names (if front sends names)
+//     const category_name = req.body.category_name ?? req.body.category;
+//     const subcategory_name = req.body.subcategory_name ?? req.body.subCategory;
+//     const issue_type_name = req.body.issue_type_name ?? req.body.issueType;
+
+//     // If issue type is "Other" allow user-provided issue_name
+//     const issue_name = req.body.issue_name ?? req.body.issueName ?? null;
+
+//     // priority may be passed as id or name (if Other)
+//     const priority_id_in = req.body.priority_id ? parseInt(req.body.priority_id, 10) : null;
+//     const priority_name_in = req.body.priority_name ?? req.body.priority ?? null;
+
+//     // comment required
+//     const comment = req.body.comment ?? req.body.comments ?? req.body.description ?? '';
+//     if (!comment) { await t.rollback(); return res.status(400).json({ message: 'comment is required' }); }
+
+//     // Resolve category/subcategory/issueType by id or name
+//     let resolvedCategoryId = category_id;
+//     let resolvedSubCategoryId = subcategory_id;
+//     let resolvedIssueTypeId = issue_type_id;
+//     let appliedSlaId = null;
+//     let appliedPriorityId = null;
+//     let appliedPriorityText = 'Medium';
+
+//     // resolve category by name if id missing
+//     if (!resolvedCategoryId && category_name) {
+//       const cat = await Category.findOne({ where: { name: category_name } });
+//       if (cat) resolvedCategoryId = cat.category_id;
+//     }
+
+//     // resolve subcategory by id OR name+category
+//     if (!resolvedSubCategoryId && subcategory_name && resolvedCategoryId) {
+//       const sc = await SubCategory.findOne({ where: { name: subcategory_name, category_id: resolvedCategoryId } });
+//       if (sc) resolvedSubCategoryId = sc.subcategory_id;
+//     } else if (!resolvedSubCategoryId && subcategory_name) {
+//       const sc = await SubCategory.findOne({ where: { name: subcategory_name } });
+//       if (sc) resolvedSubCategoryId = sc.subcategory_id;
+//     }
+
+//     // resolve issue type by id OR name + subcategory
+//     let issueTypeRecord = null;
+//     if (resolvedIssueTypeId) {
+//       issueTypeRecord = await IssueType.findByPk(resolvedIssueTypeId);
+//     } else if (issue_type_name && resolvedSubCategoryId) {
+//       issueTypeRecord = await IssueType.findOne({ where: { name: issue_type_name, subcategory_id: resolvedSubCategoryId } });
+//     } else if (issue_type_name) {
+//       issueTypeRecord = await IssueType.findOne({ where: { name: issue_type_name } });
+//     }
+
+//     if (issueTypeRecord) {
+//       resolvedIssueTypeId = issueTypeRecord.issue_type_id;
+//       appliedSlaId = issueTypeRecord.sla_id ?? null;
+//       appliedPriorityId = issueTypeRecord.priority_id ?? null;
+//     }
+
+//     // If issue type is "Other" or the resolved issue type has name 'Other' then require issue_name
+//     let issueTypeNameResolved = issueTypeRecord ? issueTypeRecord.name : (issue_type_name ?? null);
+//     const isOther = issueTypeNameResolved && issueTypeNameResolved.toLowerCase() === 'other';
+
+//     if (isOther && (!issue_name || String(issue_name).trim() === '')) {
+//       await t.rollback();
+//       return res.status(400).json({ message: 'issue_name is required when issue type is Other' });
+//     }
+
+//     // If frontend provided priority explicitly (id) override default
+//     if (priority_id_in) {
+//       const pr = await Priority.findByPk(priority_id_in);
+//       if (!pr) { await t.rollback(); return res.status(400).json({ message: 'priority_id not found' }); }
+//       appliedPriorityId = pr.priority_id;
+//       appliedPriorityText = pr.name;
+//     } else if (priority_name_in) {
+//       // try to map by name
+//       const pr = await Priority.findOne({ where: { name: priority_name_in } });
+//       if (pr) {
+//         appliedPriorityId = pr.priority_id;
+//         appliedPriorityText = pr.name;
+//       } else {
+//         // fallback to provided name text
+//         appliedPriorityText = priority_name_in;
+//       }
+//     } else if (appliedPriorityId) {
+//       const pr = await Priority.findByPk(appliedPriorityId);
+//       appliedPriorityText = pr ? pr.name : appliedPriorityText;
+//     }
+
+//     // If SLA not set from IssueType and frontend passed sla_id, accept that
+//     if (!appliedSlaId && req.body.sla_id) {
+//       const parsed = parseInt(req.body.sla_id, 10);
+//       if (!Number.isNaN(parsed)) {
+//         const srec = await SLA.findByPk(parsed);
+//         if (srec) appliedSlaId = srec.sla_id;
+//       }
+//     }
+
+//     // Determine user
+//     const userId = req.user && (req.user.id ?? req.user.user_id);
+//     if (!userId) { await t.rollback(); return res.status(401).json({ message: 'Unauthorized' }); }
+
+//     // CREATE TICKET
+//     const ticket = await Ticket.create({
+//       user_id: userId,
+//       category_id: resolvedCategoryId,
+//       subcategory_id: resolvedSubCategoryId,
+//       issue_type_id: resolvedIssueTypeId,
+//       issue_name: isOther ? issue_name : (issue_name || null),
+//       priority_id: appliedPriorityId,
+//       priority: appliedPriorityText,
+//       comment,
+//       status: 'Open',
+//       sla_id: appliedSlaId
+//     }, { transaction: t });
+
+//     // Save any ticket-level files to Document table with table_name='ticket'
+//     const ticketDocsMeta = [];
+//     if (files.length > 0) {
+//       const docsToCreate = files.map(file => {
+//         return {
+//           linked_id: ticket.ticket_id,
+//           table_name: 'ticket',
+//           type: (file.mimetype || '').startsWith('image/') ? 'image' : 'attachment',
+//           doc_name: file.originalname || file.filename || 'upload',
+//           mime_type: file.mimetype || 'application/octet-stream',
+//           doc_base64: file.buffer ? file.buffer.toString('base64') : null,
+//           created_by: req.user.username ?? String(userId),
+//           status: 'active'
+//         };
+//       });
+//       const created = await Document.bulkCreate(docsToCreate, { transaction: t });
+//       created.forEach(d => ticketDocsMeta.push({ document_id: d.document_id, doc_name: d.doc_name, mime_type: d.mime_type, created_on: d.created_on }));
+//     }
+
+//     await t.commit();
+
+//     // Respond with ticket and metadata. computeSLACompliance may be used elsewhere
+//     const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+//     if (ticketPlain.screenshot_url) delete ticketPlain.screenshot_url;
+
+//     // fetch SLA record if present
+//     let slaRecord = null;
+//     if (ticketPlain.sla_id) slaRecord = await SLA.findByPk(ticketPlain.sla_id);
+
+//     return res.status(201).json({
+//       message: 'Ticket raised',
+//       ticket: {
+//         ...ticketPlain,
+//         ticket_documents: ticketDocsMeta,
+//         sla: slaRecord ? (slaRecord.toJSON ? slaRecord.toJSON() : slaRecord) : null
+//       }
+//     });
+//   } catch (err) {
+//     console.error('raiseTicket error:', err);
+//     try { await t.rollback(); } catch (e) { /* ignore */ }
+//     return res.status(500).json({ message: 'Internal server error', error: err.message });
+//   }
+// };
 /* --------------------------
    Admin / other endpoints (using Document for attachments where necessary)
 ---------------------------*/

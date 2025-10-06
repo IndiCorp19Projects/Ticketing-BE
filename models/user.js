@@ -77,6 +77,7 @@ module.exports = (sequelize, DataTypes) => {
   User.associate = (models) => {
     User.hasMany(models.Ticket, { foreignKey: 'user_id', as: 'tickets' });
     User.hasMany(models.TicketReply, { foreignKey: 'sender_id', as: 'sentReplies' });
+    // uploader relation for Document (created_by stored as username) is handled in Document.associate
   };
 
   return User;

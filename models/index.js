@@ -1,4 +1,4 @@
-// models/index.js
+// models/index.js - FIXED VERSION
 const Sequelize = require('sequelize');
 require('dotenv').config();
 
@@ -14,29 +14,29 @@ const dbObj = { sequelize, Sequelize };
 
 // explicit model imports
 const User = require('./user')(sequelize, Sequelize.DataTypes);
-const Ticket = require('./ticket')(sequelize, Sequelize.DataTypes);
-const TicketReply = require('./ticketReply')(sequelize, Sequelize.DataTypes);
+const Ticket = require('./Ticket')(sequelize, Sequelize.DataTypes);
+const TicketReply = require('./TicketReply')(sequelize, Sequelize.DataTypes);
 const TicketImage = require('./TicketImage')(sequelize, Sequelize.DataTypes);
 const SLA = require('./SLA')(sequelize, Sequelize.DataTypes);
 const Document = require('./Document')(sequelize, Sequelize.DataTypes); 
 
+const Category = require('./Category')(sequelize, Sequelize.DataTypes);
+const SubCategory = require('./SubCategory')(sequelize, Sequelize.DataTypes);
+const IssueType = require('./IssueType')(sequelize, Sequelize.DataTypes);
+const Priority = require('./Priority')(sequelize, Sequelize.DataTypes);
 
-// const Category = require('./Category')(sequelize, Sequelize.DataTypes);
-// const SubCategory = require('./SubCategory')(sequelize, Sequelize.DataTypes);
-// const IssueType = require('./IssueType')(sequelize, Sequelize.DataTypes);
-
-// attach to db object
+// FIXED: Use correct property names - don't overwrite Document with IssueType
 dbObj.User = User;
 dbObj.Ticket = Ticket;
 dbObj.TicketReply = TicketReply;
 dbObj.TicketImage = TicketImage;
 dbObj.SLA = SLA;
-dbObj.Document = Document;
+dbObj.Document = Document; // This is the actual Document model
 
-// dbObj.Category = Category;
-// dbObj.SubCategory = SubCategory;
-// dbObj.Document = IssueType;
-
+dbObj.Category = Category;
+dbObj.SubCategory = SubCategory;
+dbObj.IssueType = IssueType; // Fixed: Use IssueType, not Document
+dbObj.Priority = Priority;   // Fixed: Use Priority, not priority
 
 // call associate on each model if present (once)
 Object.keys(dbObj).forEach((key) => {

@@ -1,4 +1,4 @@
-// models/Document.js
+// models/document.js
 module.exports = (sequelize, DataTypes) => {
   const Document = sequelize.define(
     'Document',
@@ -25,12 +25,12 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true
       },
       mime_type: {
-        type: DataTypes.STRING(555),
+        type: DataTypes.STRING(255),
         allowNull: true
       },
-      // HUGE text for base64 content (LONGTEXT)
+      // store base64 as LONG TEXT (safer for very large base64 strings than TEXT default)
       doc_base64: {
-        type: DataTypes.BLOB('long'),
+        type: DataTypes.TEXT('long'),
         allowNull: true
       },
       created_on: {
@@ -63,8 +63,7 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   Document.associate = (models) => {
-    // Polymorphic-ish associations (constraints:false because linked_id used for different tables)
-    // ticket-level documents
+    // Polymorphic-ish associations: scope by table_name
     Document.belongsTo(models.Ticket, {
       foreignKey: 'linked_id',
       as: 'ticket',
@@ -72,7 +71,6 @@ module.exports = (sequelize, DataTypes) => {
       scope: { table_name: 'ticket' }
     });
 
-    // reply-level documents
     Document.belongsTo(models.TicketReply, {
       foreignKey: 'linked_id',
       as: 'reply',
@@ -80,7 +78,7 @@ module.exports = (sequelize, DataTypes) => {
       scope: { table_name: 'ticket_reply' }
     });
 
-    // optional: document uploaded by user
+    // optional: uploader relation (created_by stores username)
     if (models.User) {
       Document.belongsTo(models.User, { foreignKey: 'created_by', targetKey: 'username', as: 'uploader', constraints: false });
     }

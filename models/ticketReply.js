@@ -36,29 +36,19 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
-  // TicketReply.associate = (models) => {
-  //   TicketReply.belongsTo(models.Ticket, { foreignKey: 'ticket_id', as: 'ticket' });
-  //   TicketReply.belongsTo(models.User, { foreignKey: 'sender_id', as: 'sender' });
-  // };
-
-
-
   TicketReply.associate = (models) => {
-  // existing
-  TicketReply.belongsTo(models.Ticket, { foreignKey: 'ticket_id', as: 'ticket' });
-  TicketReply.belongsTo(models.User, { foreignKey: 'sender_id', as: 'sender' });
+    TicketReply.belongsTo(models.Ticket, { foreignKey: 'ticket_id', as: 'ticket' });
+    TicketReply.belongsTo(models.User, { foreignKey: 'sender_id', as: 'sender' });
 
-  // new: replies can have many documents (attachments)
-  if (models.Document) {
-    TicketReply.hasMany(models.Document, {
-      foreignKey: 'linked_id',
-      as: 'documents',
-      scope: { table_name: 'ticket_reply' },
-      constraints: false
-    });
-  }
-};
-
+    if (models.Document) {
+      TicketReply.hasMany(models.Document, {
+        foreignKey: 'linked_id',
+        as: 'documents',
+        scope: { table_name: 'ticket_reply' },
+        constraints: false
+      });
+    }
+  };
 
   return TicketReply;
 };

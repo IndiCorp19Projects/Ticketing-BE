@@ -54,6 +54,7 @@ module.exports = (sequelize, DataTypes) => {
 
   SLA.associate = (models) => {
     SLA.hasMany(models.Ticket, { foreignKey: 'sla_id', as: 'tickets' });
+    SLA.hasMany(models.IssueType, { foreignKey: 'sla_id', as: 'issue_types' });
   };
 
   return SLA;

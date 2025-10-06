@@ -9,6 +9,11 @@ const { sequelize } = require('./models');
 const authRoutes = require('./routes/authRoutes');
 const ticketRoutes = require('./routes/ticketRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const lookupRoutes = require('./routes/lookup');
+const categoryRoutes = require('./routes/categoryRoutes');
+const subCategoryRoutes = require('./routes/subCategoryRoutes');
+const priorityRoutes = require('./routes/priorityRoutes');
+const issueTypeRoutes = require('./routes/issueTypeRoutes');
 
 const app = express();
 
@@ -35,6 +40,11 @@ app.get("/api/check", (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/ticket', ticketRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/admin/categories', categoryRoutes);
+app.use('/api/admin/subcategories', subCategoryRoutes);
+app.use('/api/admin/priorities', priorityRoutes);
+app.use('/api/admin/issuetypes', issueTypeRoutes);
+
 
 app.get('/', (req, res) => res.send('Ticketing system API running'));
 
