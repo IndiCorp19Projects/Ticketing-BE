@@ -20,6 +20,7 @@ module.exports = (sequelize, DataTypes) => {
 
       module: { type: DataTypes.STRING(100), allowNull: true }, // legacy / optional
       sub_module: { type: DataTypes.STRING(100), allowNull: true },
+      category: { type: DataTypes.STRING(100), allowNull: true },
       comment: { type: DataTypes.TEXT, allowNull: false },
       screenshot_url: { type: DataTypes.BLOB('long'), allowNull: true },
       status: {
