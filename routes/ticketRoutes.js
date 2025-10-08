@@ -32,6 +32,14 @@ router.post('/:ticketId/decline', ticketController.userDeclineClosure);
 // user reopen
 router.post('/:ticketId/reopen', ticketController.userReopenTicket);
 
+
+// add:
+router.post('/:ticketId/assign', authMiddleware, ticketController.assignTicket); // admin only endpoint
+router.get('/admin/all', authMiddleware, ticketController.adminGetAllTickets); // existing
+router.get('/executive/my',authMiddleware, ticketController.execGetAssignedTickets); // new
+
+router.put('/:ticketId/priority', authMiddleware, ticketController.updateTicketPriority);
+
 module.exports = router;
 
 

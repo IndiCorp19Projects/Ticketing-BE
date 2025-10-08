@@ -14,11 +14,19 @@ module.exports = (sequelize, DataTypes) => {
       // custom issue name when IssueType = Other
       issue_name: { type: DataTypes.STRING(255), allowNull: true },
 
+      // NEW: Flag to identify "Other" issue type
+      is_other_issue: { type: DataTypes.BOOLEAN, defaultValue: false },
+
       // priority (FK + textual denormalized fallback)
       priority_id: { type: DataTypes.INTEGER, allowNull: true },
-      priority: { type: DataTypes.STRING(50), allowNull: false, defaultValue: 'Medium' },
+      priority: { 
+        type: DataTypes.STRING(50), 
+        allowNull: false, 
+        defaultValue: 'Medium'
+      },
 
-      module: { type: DataTypes.STRING(100), allowNull: true }, // legacy / optional
+      // ... rest of your existing fields
+      module: { type: DataTypes.STRING(100), allowNull: true },
       sub_module: { type: DataTypes.STRING(100), allowNull: true },
       category: { type: DataTypes.STRING(100), allowNull: true },
       comment: { type: DataTypes.TEXT, allowNull: false },
@@ -37,7 +45,8 @@ module.exports = (sequelize, DataTypes) => {
       response_time_seconds: { type: DataTypes.INTEGER, allowNull: true },
       resolved_at: { type: DataTypes.DATE, allowNull: true },
       resolve_time_seconds: { type: DataTypes.INTEGER, allowNull: true },
-      last_updated_by: { type: DataTypes.STRING(100), allowNull: true }
+      last_updated_by: { type: DataTypes.STRING(100), allowNull: true },
+      assigned_to: { type: DataTypes.INTEGER, allowNull: true },
     },
     {
       tableName: 'ticket',
@@ -72,6 +81,8 @@ module.exports = (sequelize, DataTypes) => {
         constraints: false
       });
     }
+
+    Ticket.belongsTo(models.User, { foreignKey: 'assigned_to', as: 'assignee', constraints: false });
   };
 
   return Ticket;

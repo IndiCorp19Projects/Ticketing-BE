@@ -1,5 +1,5 @@
 // controllers/subCategoryController.js
-const { SubCategory, Category, IssueType } = require('../models');
+const { SubCategory, Category } = require('../models'); // REMOVE: IssueType import
 
 exports.listSubCategories = async (req, res) => {
   try {
@@ -9,7 +9,8 @@ exports.listSubCategories = async (req, res) => {
 
     const subs = await SubCategory.findAll({
       where,
-      include: [{ model: IssueType, as: 'issue_types', where: { is_active: true }, required: false }]
+      // REMOVE: IssueType include
+      include: [{ model: Category, as: 'category' }] // ADD: Include category if needed
     });
     return res.json({ subcategories: subs });
   } catch (err) {
@@ -22,7 +23,8 @@ exports.getSubCategory = async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const sub = await SubCategory.findByPk(id, {
-      include: [{ model: IssueType, as: 'issue_types', where: { is_active: true }, required: false }, { model: Category, as: 'category' }]
+      // REMOVE: IssueType include
+      include: [{ model: Category, as: 'category' }]
     });
     if (!sub) return res.status(404).json({ message: 'SubCategory not found' });
     return res.json({ subcategory: sub });

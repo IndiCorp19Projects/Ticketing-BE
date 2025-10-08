@@ -1,4 +1,3 @@
-// models/subCategory.js
 module.exports = (sequelize, DataTypes) => {
   const SubCategory = sequelize.define('SubCategory', {
     subcategory_id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -15,7 +14,8 @@ module.exports = (sequelize, DataTypes) => {
 
   SubCategory.associate = (models) => {
     SubCategory.belongsTo(models.Category, { foreignKey: 'category_id', as: 'category' });
-    SubCategory.hasMany(models.IssueType, { foreignKey: 'subcategory_id', as: 'issue_types' });
+    // REMOVE: association with IssueType
+    // SubCategory.hasMany(models.IssueType, { foreignKey: 'subcategory_id', as: 'issue_types' });
     SubCategory.hasMany(models.Ticket, { foreignKey: 'subcategory_id', as: 'tickets' });
   };
 

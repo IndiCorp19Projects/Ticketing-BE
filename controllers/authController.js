@@ -5,8 +5,6 @@ const pwd = require('../utils/passwordHashing');
 const { jwtSecret } = require('../config/config');
 
 
-
-
 exports.signup = async (req, res) => {
   try {
     const { first_name, last_name, email, password, role_name = 'user', usertype } = req.body;
@@ -98,3 +96,24 @@ exports.me = async (req, res) => {
     return res.status(401).json({ message: 'Not authenticated' });
   }
 };
+
+
+exports.getExecutives = async (req, res) => {
+  try {
+    const executives = await User.findAll({
+      where: { role_name: 'executive' },
+      attributes: ['user_id', 'username', 'email', 'role_name'],
+    });
+
+    if (!executives.length) {
+      return res.status(404).json({ message: 'No executives found' });
+    }
+
+    return res.json(executives);
+  } catch (err) {
+    console.error('Error fetching executives', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+

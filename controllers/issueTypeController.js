@@ -1,11 +1,9 @@
-// controllers/issueTypeController.js
-const { IssueType, SubCategory, Priority, SLA } = require('../models');
+const { IssueType, Priority, SLA } = require('../models');
 
 exports.listIssueTypes = async (req, res) => {
   try {
-    const subcategoryId = req.query.subcategoryId ? parseInt(req.query.subcategoryId, 10) : null;
+    // REMOVE: subcategoryId filtering
     const where = { is_active: true };
-    if (subcategoryId) where.subcategory_id = subcategoryId;
 
     const types = await IssueType.findAll({
       where,
@@ -27,7 +25,11 @@ exports.getIssueType = async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const it = await IssueType.findByPk(id, {
-      include: [{ model: Priority, as: 'default_priority' }, { model: SLA, as: 'sla' }, { model: SubCategory, as: 'subcategory' }]
+      include: [
+        { model: Priority, as: 'default_priority' }, 
+        { model: SLA, as: 'sla' }
+        // REMOVE: SubCategory inclusion
+      ]
     });
     if (!it) return res.status(404).json({ message: 'IssueType not found' });
     return res.json({ issue_type: it });
@@ -39,11 +41,11 @@ exports.getIssueType = async (req, res) => {
 
 exports.createIssueType = async (req, res) => {
   try {
-    const { subcategory_id, name, sla_id, priority_id, description } = req.body;
-    if (!subcategory_id || !name) return res.status(400).json({ message: 'subcategory_id and name are required' });
+    const { name, sla_id, priority_id, description } = req.body;
+    // REMOVE: subcategory_id validation
+    if (!name) return res.status(400).json({ message: 'name is required' });
 
-    const sub = await SubCategory.findByPk(subcategory_id);
-    if (!sub) return res.status(400).json({ message: 'SubCategory not found' });
+    // REMOVE: SubCategory lookup
 
     if (sla_id) {
       const sla = await SLA.findByPk(sla_id);
@@ -55,7 +57,7 @@ exports.createIssueType = async (req, res) => {
     }
 
     const it = await IssueType.create({
-      subcategory_id,
+      // REMOVE: subcategory_id
       name: String(name).trim(),
       sla_id: sla_id ?? null,
       priority_id: priority_id ?? null,
@@ -73,15 +75,13 @@ exports.createIssueType = async (req, res) => {
 exports.updateIssueType = async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { name, sla_id, priority_id, description, is_active, subcategory_id } = req.body;
+    const { name, sla_id, priority_id, description, is_active } = req.body;
+    // REMOVE: subcategory_id from destructuring
     const it = await IssueType.findByPk(id);
     if (!it) return res.status(404).json({ message: 'IssueType not found' });
 
-    if (subcategory_id) {
-      const sub = await SubCategory.findByPk(subcategory_id);
-      if (!sub) return res.status(400).json({ message: 'SubCategory not found' });
-      it.subcategory_id = subcategory_id;
-    }
+    // REMOVE: subcategory_id update logic
+
     if (name) it.name = String(name).trim();
     if (sla_id !== undefined) {
       if (sla_id !== null) {
@@ -107,6 +107,8 @@ exports.updateIssueType = async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+// deleteIssueType remains the same
 
 exports.deleteIssueType = async (req, res) => {
   try {
