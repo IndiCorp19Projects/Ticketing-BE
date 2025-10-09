@@ -303,28 +303,360 @@ const ensureCanReply = async (req, ticket) => {
 
 
 
+// exports.replyToTicket = async (req, res) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     const { ticketId } = req.params;
+//     // frontend will pass: message, status, assigned_to (optional), screenshot_url (optional)
+//     const { message: rawMessage, status: requestedStatus, screenshot_url, assigned_to } = req.body;
+//     const files = req.files && Array.isArray(req.files) ? req.files : [];
+
+//     // require at least one of message/files/status/screenshot/assigned_to (assigned_to only if admin)
+//     // but keep behavior: message or files or status or screenshot_url or (admin && assigned_to)
+//     const isAdminSender = req.user && req.user.role_name === 'admin';
+//     const hasAssignAction = (assigned_to !== undefined && assigned_to !== null && String(assigned_to).trim() !== '');
+
+//     if (
+//       (!rawMessage || String(rawMessage).trim() === '') &&
+//       files.length === 0 &&
+//       !requestedStatus &&
+//       !screenshot_url &&
+//       !(isAdminSender && hasAssignAction)
+//     ) {
+//       await t.rollback();
+//       return res.status(400).json({ message: 'At least one of message / files / status / screenshot_url / assigned_to (admin) is required' });
+//     }
+
+//     const ticket = await Ticket.findByPk(ticketId, { transaction: t });
+//     if (!ticket) {
+//       await t.rollback();
+//       return res.status(404).json({ message: 'Ticket not found' });
+//     }
+
+//     // permission check: owner, admin, or assigned executive (via helper)
+//     if (!(await ensureCanReply(req, ticket))) {
+//       await t.rollback();
+//       return res.status(403).json({ message: 'Forbidden' });
+//     }
+
+//     const sender_type = (req.user && req.user.role_name === 'admin') ? 'admin' : (req.user && req.user.role_name === 'executive' ? 'admin' : 'user');
+//     // Note: we treat executive replies as non-admin sender_type in original design — adapt if you want executive to be 'admin' type.
+//     // If you want executive replies to be 'executive' explicitly, change sender_type accordingly.
+//     const senderId = req.user && (req.user.id ?? req.user.user_id);
+
+//     // Only these statuses are allowed
+//     const allowedStatuses = ['Open', 'Pending', 'Resolved', 'Closed'];
+//     let statusChanged = false;
+//     let newStatus = undefined;
+//     if (requestedStatus) {
+//       newStatus = String(requestedStatus).trim();
+//       if (!allowedStatuses.includes(newStatus)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
+//       }
+//       if (ticket.status !== newStatus) statusChanged = true;
+//     }
+
+//     const now = new Date();
+
+//     // If admin replies for the first time -> set response_at & response_time_seconds
+//     if (req.user && req.user.role_name === 'admin' && !ticket.response_at) {
+//       ticket.response_at = now;
+//       ticket.response_time_seconds = secondsBetween(ticket.created_at, now);
+//       ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+//     }
+
+//     // If admin provided assigned_to, handle assignment (only admin allowed)
+//     if (isAdminSender && hasAssignAction) {
+//       // validate assigned_to - it should refer to an existing executive/user
+//       const assignedId = parseInt(assigned_to, 10);
+//       if (Number.isNaN(assignedId)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: 'Invalid assigned_to value' });
+//       }
+//       const execUser = await User.findByPk(assignedId, { transaction: t });
+//       if (!execUser) {
+//         await t.rollback();
+//         return res.status(400).json({ message: 'Assignee user not found' });
+//       }
+//       // Optionally validate execUser.role_name === 'executive' (recommended)
+//       if (execUser.role_name !== 'executive') {
+//         // If you want to restrict assignment only to executives, enforce here:
+//         await t.rollback();
+//         return res.status(400).json({ message: 'Assignee must be an executive' });
+//       }
+
+//       // set assignment on ticket
+//       ticket.assigned_to = assignedId;
+//       ticket.last_updated_by = req.user.username ?? String(senderId);
+//       ticket.updated_at = now;
+
+//       // create an admin reply that notes assignment (optional but useful)
+//       // await TicketReply.create({
+//       //   ticket_id: ticket.ticket_id ?? ticket.id,
+//       //   sender_id: senderId,
+//       //   sender_type: 'admin',
+//       //   message: `Assigned ticket to ${execUser.username} (user_id: ${assignedId})`
+//       // }, { transaction: t });
+//     }
+
+//     // Apply status change (admin allowed, others may be restricted depending on your policy)
+//     if (statusChanged && newStatus) {
+//       ticket.prev_status = ticket.status;
+//       ticket.status = newStatus;
+//       ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+//       ticket.updated_at = now;
+
+//       // when marking resolved/closed set resolved_at/time if not already set
+//       if ((newStatus === 'Resolved' || newStatus === 'Closed') && !ticket.resolved_at) {
+//         ticket.resolved_at = now;
+//         ticket.resolve_time_seconds = secondsBetween(ticket.created_at, now);
+//       }
+//     } else {
+//       // update last_updated_by for admin replies without status change, or updated_at for user replies
+//       if (req.user && req.user.role_name === 'admin') {
+//         ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+//       }
+//       ticket.updated_at = now;
+//     }
+
+//     // persist ticket changes
+//     await ticket.save({ transaction: t });
+
+//     // Create reply only if message present (but we allow assignment-only action earlier)
+//     let reply = null;
+//     if (rawMessage && String(rawMessage).trim() !== '') {
+//       reply = await TicketReply.create({
+//         ticket_id: ticket.ticket_id ?? ticket.id,
+//         sender_id: senderId,
+//         sender_type: (req.user && req.user.role_name === 'admin') ? 'admin' : 'user',
+//         message: rawMessage ?? ''
+//       }, { transaction: t });
+//     }
+
+//     // helper to create Document entries from files or base64 (reply-level docs)
+//     const createdDocsMeta = [];
+
+//     // Save multi-file uploads (req.files) => store base64 in doc_base64
+//     if (files.length > 0) {
+//       // ensure we have a reply to attach to; if assignment only and no reply created earlier, create a lightweight reply to attach files.
+//       let replyToAttach = reply;
+//       if (!replyToAttach) {
+//         // create a system/user reply to host attachments
+//         replyToAttach = await TicketReply.create({
+//           ticket_id: ticket.ticket_id ?? ticket.id,
+//           sender_id: senderId,
+//           sender_type: (req.user && req.user.role_name === 'admin') ? 'admin' : 'user',
+//           message: ''
+//         }, { transaction: t });
+//       }
+
+//       const docsToCreate = files.map((file) => {
+//         const b64 = file.buffer ? file.buffer.toString('base64') : null;
+//         const mime = file.mimetype || 'application/octet-stream';
+//         const isImage = mime.startsWith('image/');
+//         return {
+//           linked_id: replyToAttach.reply_id,
+//           table_name: 'ticket_reply',
+//           type: isImage ? 'image' : 'attachment',
+//           doc_name: file.originalname || file.filename || 'upload',
+//           mime_type: mime,
+//           doc_base64: b64,
+//           created_by: req.user.username ?? String(senderId),
+//           status: 'active'
+//         };
+//       });
+//       const created = await Document.bulkCreate(docsToCreate, { transaction: t });
+//       created.forEach((d) => {
+//         createdDocsMeta.push({
+//           document_id: d.document_id ?? d.id ?? null,
+//           doc_name: d.doc_name,
+//           mime_type: d.mime_type,
+//           created_on: d.created_on
+//         });
+//       });
+//     } else if (screenshot_url) {
+//       // screenshot_url as base64 data URI: data:<mimetype>;base64,<data>
+//       const dataUrl = String(screenshot_url);
+//       const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
+//       if (m) {
+//         const mimetype = m[1];
+//         const b64 = m[2];
+//         // ensure we have reply to attach to
+//         let replyToAttach = reply;
+//         if (!replyToAttach) {
+//           replyToAttach = await TicketReply.create({
+//             ticket_id: ticket.ticket_id ?? ticket.id,
+//             sender_id: senderId,
+//             sender_type: (req.user && req.user.role_name === 'admin') ? 'admin' : 'user',
+//             message: ''
+//           }, { transaction: t });
+//         }
+
+//         const doc = await Document.create({
+//           linked_id: replyToAttach.reply_id,
+//           table_name: 'ticket_reply',
+//           type: mimetype.startsWith('image/') ? 'image' : 'attachment',
+//           doc_name: req.body.screenshot_name ?? `upload.${(mimetype.split('/')[1] || 'bin')}`,
+//           mime_type: mimetype,
+//           doc_base64: b64,
+//           created_by: req.user.username ?? String(senderId),
+//           status: 'active'
+//         }, { transaction: t });
+
+//         createdDocsMeta.push({
+//           document_id: doc.document_id ?? doc.id ?? null,
+//           doc_name: doc.doc_name,
+//           mime_type: doc.mime_type,
+//           created_on: doc.created_on
+//         });
+//       }
+//     }
+
+//     // commit
+//     await t.commit();
+
+//     // Notifications (fire-and-forget) - keep existing behavior
+//     (async () => {
+//       try {
+//         const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+//         const replyPlain = reply ? (reply.toJSON ? reply.toJSON() : reply) : null;
+//         const sender = { username: req.user.username, email: req.user.email };
+
+//         if ((req.user && req.user.role_name === 'admin') || (req.user && req.user.role_name === 'executive')) {
+//           // notify owner
+//           const owner = await User.findByPk(ticket.user_id, { attributes: ['email', 'username'] });
+//           if (owner && owner.email) {
+//             try {
+//               const { subject, html, text } = ticketReplyTemplate({ ticket: ticketPlain, reply: replyPlain, sender });
+//               await sendMail({ to: owner.email, subject, html, text });
+//             } catch (mailErr) {
+//               console.error('Mail error (reply -> owner):', mailErr && mailErr.message ? mailErr.message : mailErr);
+//             }
+
+//             if (statusChanged) {
+//               try {
+//                 const { subject, html, text } = ticketStatusChangedTemplate({
+//                   ticket: ticketPlain,
+//                   oldStatus: ticket.prev_status,
+//                   newStatus: ticket.status,
+//                   admin: sender
+//                 });
+//                 await sendMail({ to: owner.email, subject, html, text });
+//               } catch (mailErr2) {
+//                 console.error('Mail error (status change -> owner):', mailErr2 && mailErr2.message ? mailErr2.message : mailErr2);
+//               }
+//             }
+//           }
+//         } else {
+//           // user replied -> notify admins (except replying user if they are admin)
+//           const admins = await User.findAll({ where: { role_name: 'admin', is_active: true }, attributes: ['email', 'username'] });
+//           const adminEmails = admins.map(a => a.email).filter(e => e && e !== req.user.email);
+//           if (adminEmails.length > 0) {
+//             try {
+//               const { subject, html, text } = ticketReplyTemplate({ ticket: ticketPlain, reply: replyPlain, sender });
+//               await sendMail({ to: adminEmails.join(','), subject, html, text });
+//             } catch (mailErr) {
+//               console.error('Mail error (reply -> admins):', mailErr && mailErr.message ? mailErr.message : mailErr);
+//             }
+//           }
+//         }
+//       } catch (outerMailErr) {
+//         console.error('Mail pipeline error (replyToTicket notifications):', outerMailErr && outerMailErr.message ? outerMailErr.message : outerMailErr);
+//       }
+//     })();
+
+//     // fetch reply with sender for response (if reply exists)
+//     const replyWithSender = reply
+//       ? await TicketReply.findByPk(reply.reply_id, {
+//           include: [{ model: User, as: 'sender', attributes: ['user_id', 'username', 'email'] }]
+//         })
+//       : null;
+
+//     // prepare ticket response: include documents metadata for reply and ticket-level docs
+//     const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+//     // attach reply-level created docs metadata (if any)
+//     const replyDocs = createdDocsMeta;
+
+//     // fetch ticket-level documents if any
+//     const ticketDocs = await Document.findAll({
+//       where: { linked_id: ticket.ticket_id, table_name: 'ticket' },
+//       attributes: ['document_id', 'doc_name', 'mime_type', 'created_on']
+//     });
+
+//     // attach assignee object if assigned
+//     let assigneeObj = null;
+//     if (ticketPlain.assigned_to) {
+//       const assigneeUser = await User.findByPk(ticketPlain.assigned_to);
+//       if (assigneeUser) {
+//         assigneeObj = {
+//           user_id: assigneeUser.user_id,
+//           username: assigneeUser.username,
+//           email: assigneeUser.email
+//         };
+//       }
+//     }
+
+//     const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(ticketPlain);
+
+//     return res.status(201).json({
+//       message: 'Reply added',
+//       reply: replyWithSender,
+//       documents: replyDocs,
+//       ticket: {
+//         ...ticketPlain,
+//         ticket_documents: ticketDocs.map(d => (d.toJSON ? d.toJSON() : d)),
+//         assignee: assigneeObj,
+//         sla,
+//         response_sla_met,
+//         resolve_sla_met
+//       }
+//     });
+//   } catch (err) {
+//     console.error('replyToTicket', err);
+//     try { await t.rollback(); } catch (e) { /* ignore */ }
+//     return res.status(500).json({ message: 'Internal server error' });
+//   }
+// };
+
+
+/* --------------------------
+   Admin / other endpoints (using Document for attachments where necessary)
+---------------------------*/
+
+
 exports.replyToTicket = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { ticketId } = req.params;
-    // frontend will pass: message, status, assigned_to (optional), screenshot_url (optional)
-    const { message: rawMessage, status: requestedStatus, screenshot_url, assigned_to } = req.body;
+    // ADD priority to the destructured fields
+    const { 
+      message: rawMessage, 
+      status: requestedStatus, 
+      screenshot_url, 
+      assigned_to,
+      priority: requestedPriority // ADD THIS
+    } = req.body;
+    
     const files = req.files && Array.isArray(req.files) ? req.files : [];
 
-    // require at least one of message/files/status/screenshot/assigned_to (assigned_to only if admin)
-    // but keep behavior: message or files or status or screenshot_url or (admin && assigned_to)
+    // Update validation to include priority
     const isAdminSender = req.user && req.user.role_name === 'admin';
     const hasAssignAction = (assigned_to !== undefined && assigned_to !== null && String(assigned_to).trim() !== '');
+    const hasPriorityAction = (requestedPriority !== undefined && requestedPriority !== null && String(requestedPriority).trim() !== '');
 
     if (
       (!rawMessage || String(rawMessage).trim() === '') &&
       files.length === 0 &&
       !requestedStatus &&
       !screenshot_url &&
-      !(isAdminSender && hasAssignAction)
+      !(isAdminSender && hasAssignAction) &&
+      !(isAdminSender && hasPriorityAction) // ADD THIS
     ) {
       await t.rollback();
-      return res.status(400).json({ message: 'At least one of message / files / status / screenshot_url / assigned_to (admin) is required' });
+      return res.status(400).json({ 
+        message: 'At least one of message / files / status / screenshot_url / assigned_to (admin) / priority (admin) is required' 
+      });
     }
 
     const ticket = await Ticket.findByPk(ticketId, { transaction: t });
@@ -340,8 +672,6 @@ exports.replyToTicket = async (req, res) => {
     }
 
     const sender_type = (req.user && req.user.role_name === 'admin') ? 'admin' : (req.user && req.user.role_name === 'executive' ? 'admin' : 'user');
-    // Note: we treat executive replies as non-admin sender_type in original design — adapt if you want executive to be 'admin' type.
-    // If you want executive replies to be 'executive' explicitly, change sender_type accordingly.
     const senderId = req.user && (req.user.id ?? req.user.user_id);
 
     // Only these statuses are allowed
@@ -357,6 +687,22 @@ exports.replyToTicket = async (req, res) => {
       if (ticket.status !== newStatus) statusChanged = true;
     }
 
+    // ADD PRIORITY UPDATE LOGIC
+    let priorityChanged = false;
+    let newPriority = undefined;
+    if (isAdminSender && hasPriorityAction) {
+      newPriority = String(requestedPriority).trim();
+      
+      // Validate priority - you might want to fetch available priorities from DB
+      const validPriorities = ['Low', 'Medium', 'High', 'Critical', 'Urgent']; // Adjust based on your priorities
+      if (!validPriorities.includes(newPriority)) {
+        await t.rollback();
+        return res.status(400).json({ message: `Invalid priority. Allowed: ${validPriorities.join(', ')}` });
+      }
+      
+      if (ticket.priority !== newPriority) priorityChanged = true;
+    }
+
     const now = new Date();
 
     // If admin replies for the first time -> set response_at & response_time_seconds
@@ -368,7 +714,6 @@ exports.replyToTicket = async (req, res) => {
 
     // If admin provided assigned_to, handle assignment (only admin allowed)
     if (isAdminSender && hasAssignAction) {
-      // validate assigned_to - it should refer to an existing executive/user
       const assignedId = parseInt(assigned_to, 10);
       if (Number.isNaN(assignedId)) {
         await t.rollback();
@@ -379,41 +724,36 @@ exports.replyToTicket = async (req, res) => {
         await t.rollback();
         return res.status(400).json({ message: 'Assignee user not found' });
       }
-      // Optionally validate execUser.role_name === 'executive' (recommended)
       if (execUser.role_name !== 'executive') {
-        // If you want to restrict assignment only to executives, enforce here:
         await t.rollback();
         return res.status(400).json({ message: 'Assignee must be an executive' });
       }
 
-      // set assignment on ticket
       ticket.assigned_to = assignedId;
       ticket.last_updated_by = req.user.username ?? String(senderId);
       ticket.updated_at = now;
-
-      // create an admin reply that notes assignment (optional but useful)
-      // await TicketReply.create({
-      //   ticket_id: ticket.ticket_id ?? ticket.id,
-      //   sender_id: senderId,
-      //   sender_type: 'admin',
-      //   message: `Assigned ticket to ${execUser.username} (user_id: ${assignedId})`
-      // }, { transaction: t });
     }
 
-    // Apply status change (admin allowed, others may be restricted depending on your policy)
+    // APPLY PRIORITY CHANGE (admin only)
+    if (priorityChanged && newPriority) {
+      ticket.priority = newPriority;
+      ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+      ticket.updated_at = now;
+    }
+
+    // Apply status change
     if (statusChanged && newStatus) {
       ticket.prev_status = ticket.status;
       ticket.status = newStatus;
       ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
       ticket.updated_at = now;
 
-      // when marking resolved/closed set resolved_at/time if not already set
       if ((newStatus === 'Resolved' || newStatus === 'Closed') && !ticket.resolved_at) {
         ticket.resolved_at = now;
         ticket.resolve_time_seconds = secondsBetween(ticket.created_at, now);
       }
     } else {
-      // update last_updated_by for admin replies without status change, or updated_at for user replies
+      // Update last_updated_by and updated_at even if only priority changed
       if (req.user && req.user.role_name === 'admin') {
         ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
       }
@@ -423,7 +763,7 @@ exports.replyToTicket = async (req, res) => {
     // persist ticket changes
     await ticket.save({ transaction: t });
 
-    // Create reply only if message present (but we allow assignment-only action earlier)
+    // Create reply only if message present
     let reply = null;
     if (rawMessage && String(rawMessage).trim() !== '') {
       reply = await TicketReply.create({
@@ -516,7 +856,7 @@ exports.replyToTicket = async (req, res) => {
     // commit
     await t.commit();
 
-    // Notifications (fire-and-forget) - keep existing behavior
+    // Notifications (fire-and-forget)
     (async () => {
       try {
         const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
@@ -534,6 +874,7 @@ exports.replyToTicket = async (req, res) => {
               console.error('Mail error (reply -> owner):', mailErr && mailErr.message ? mailErr.message : mailErr);
             }
 
+            // Notify about status change
             if (statusChanged) {
               try {
                 const { subject, html, text } = ticketStatusChangedTemplate({
@@ -547,9 +888,24 @@ exports.replyToTicket = async (req, res) => {
                 console.error('Mail error (status change -> owner):', mailErr2 && mailErr2.message ? mailErr2.message : mailErr2);
               }
             }
+
+            // ADD: Notify about priority change (you'll need to create this template)
+            if (priorityChanged) {
+              try {
+                const { subject, html, text } = ticketPriorityChangedTemplate({
+                  ticket: ticketPlain,
+                  oldPriority: ticket.priority, // Note: you might want to store previous priority
+                  newPriority: newPriority,
+                  admin: sender
+                });
+                await sendMail({ to: owner.email, subject, html, text });
+              } catch (mailErr3) {
+                console.error('Mail error (priority change -> owner):', mailErr3 && mailErr3.message ? mailErr3.message : mailErr3);
+              }
+            }
           }
         } else {
-          // user replied -> notify admins (except replying user if they are admin)
+          // user replied -> notify admins
           const admins = await User.findAll({ where: { role_name: 'admin', is_active: true }, attributes: ['email', 'username'] });
           const adminEmails = admins.map(a => a.email).filter(e => e && e !== req.user.email);
           if (adminEmails.length > 0) {
@@ -562,22 +918,20 @@ exports.replyToTicket = async (req, res) => {
           }
         }
       } catch (outerMailErr) {
-        console.error('Mail pipeline error (replyToTicket notifications):', outerMailErr && outerMailErr.message ? outerMailErr.message : outerMailErr);
+        console.error('Mail pipeline error:', outerMailErr && outerMailErr.message ? outerMailErr.message : outerMailErr);
       }
     })();
 
-    // fetch reply with sender for response (if reply exists)
+    // fetch reply with sender for response
     const replyWithSender = reply
       ? await TicketReply.findByPk(reply.reply_id, {
           include: [{ model: User, as: 'sender', attributes: ['user_id', 'username', 'email'] }]
         })
       : null;
 
-    // prepare ticket response: include documents metadata for reply and ticket-level docs
+    // prepare response
     const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
-    // attach reply-level created docs metadata (if any)
-    const replyDocs = createdDocsMeta;
-
+    
     // fetch ticket-level documents if any
     const ticketDocs = await Document.findAll({
       where: { linked_id: ticket.ticket_id, table_name: 'ticket' },
@@ -602,7 +956,7 @@ exports.replyToTicket = async (req, res) => {
     return res.status(201).json({
       message: 'Reply added',
       reply: replyWithSender,
-      documents: replyDocs,
+      documents: createdDocsMeta,
       ticket: {
         ...ticketPlain,
         ticket_documents: ticketDocs.map(d => (d.toJSON ? d.toJSON() : d)),
@@ -618,12 +972,6 @@ exports.replyToTicket = async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
-
-
-/* --------------------------
-   Admin / other endpoints (using Document for attachments where necessary)
----------------------------*/
-
 
 
 exports.adminRequestClose = async (req, res) => {
