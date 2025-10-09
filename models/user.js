@@ -1,4 +1,3 @@
-// models/user.js
 const pwd = require('../utils/passwordHashing');
 
 module.exports = (sequelize, DataTypes) => {
@@ -35,6 +34,70 @@ module.exports = (sequelize, DataTypes) => {
       password_hash: {
         type: DataTypes.STRING(255),
         allowNull: false,
+      },
+      phone_no: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
+      dob: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      designation: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      department: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      address1: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      address2: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      country: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      state: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      city: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      pincode: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
+      permanent_address1: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      permanent_address2: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      permanent_country: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      permanent_state: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      permanent_city: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      permanent_pincode: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
       },
       is_active: {
         type: DataTypes.BOOLEAN,
@@ -77,7 +140,6 @@ module.exports = (sequelize, DataTypes) => {
   User.associate = (models) => {
     User.hasMany(models.Ticket, { foreignKey: 'user_id', as: 'tickets' });
     User.hasMany(models.TicketReply, { foreignKey: 'sender_id', as: 'sentReplies' });
-    // uploader relation for Document (created_by stored as username) is handled in Document.associate
   };
 
   return User;

@@ -18,3 +18,4 @@ router.get('/me', authController.me);
 router.get('/executives', authController.getExecutives);
 
 module.exports = router;
+

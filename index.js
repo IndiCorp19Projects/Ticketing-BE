@@ -15,6 +15,7 @@ const subCategoryRoutes = require('./routes/subCategoryRoutes');
 const priorityRoutes = require('./routes/priorityRoutes');
 const issueTypeRoutes = require('./routes/issueTypeRoutes');
 const slaRoutes = require('./routes/slaRoutes');
+const userRoutes = require('./routes/userRoutes');
 
 const app = express();
 
@@ -37,7 +38,7 @@ app.get("/api/check", (req, res) => {
   res.json({ cookies: req.cookies });
 });
 
-
+app.use('/api/admin', userRoutes);
 app.use('/api/auth', authRoutes);
 
 app.use('/api/admin/categories', categoryRoutes);
@@ -49,6 +50,8 @@ app.use('/api/admin/slas', slaRoutes);
 
 app.use('/api/ticket', ticketRoutes);
 app.use('/api/admin', adminRoutes);
+
+
 
 
 
