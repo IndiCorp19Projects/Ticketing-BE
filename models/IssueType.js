@@ -1,11 +1,9 @@
+// models/IssueType.js
 module.exports = (sequelize, DataTypes) => {
   const IssueType = sequelize.define('IssueType', {
     issue_type_id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    // REMOVE: subcategory_id field
-    // subcategory_id: { type: DataTypes.INTEGER, allowNull: false },
     name: { type: DataTypes.STRING(150), allowNull: false, unique: true },
     description: { type: DataTypes.TEXT, allowNull: true },
-    sla_id: { type: DataTypes.INTEGER, allowNull: true },
     priority_id: { type: DataTypes.INTEGER, allowNull: true },
     is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     created_on: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
@@ -16,11 +14,9 @@ module.exports = (sequelize, DataTypes) => {
   });
 
   IssueType.associate = (models) => {
-    // REMOVE: association with SubCategory
-    // IssueType.belongsTo(models.SubCategory, { foreignKey: 'subcategory_id', as: 'subcategory' });
-    IssueType.belongsTo(models.SLA, { foreignKey: 'sla_id', as: 'sla' });
     IssueType.belongsTo(models.Priority, { foreignKey: 'priority_id', as: 'default_priority' });
     IssueType.hasMany(models.Ticket, { foreignKey: 'issue_type_id', as: 'tickets' });
+    IssueType.hasMany(models.SLA, { foreignKey: 'issue_type_id', as: 'slas' });
   };
 
   return IssueType;

@@ -10,3 +10,5 @@ router.put('/:id', controller.updateIssueType);
 router.delete('/:id', controller.deleteIssueType);
 
 module.exports = router;
+
+// routes/sla.js - Add new routes

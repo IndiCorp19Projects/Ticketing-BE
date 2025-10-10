@@ -16,9 +16,13 @@ module.exports = (sequelize, DataTypes) => {
           key: 'user_id'
         }
       },
-      issue_type: {
-        type: DataTypes.STRING(150),
-        allowNull: false
+      issue_type_id: {  // Changed from issue_type string to issue_type_id
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'issue_type',
+          key: 'issue_type_id'
+        }
       },
       response_target_minutes: {
         type: DataTypes.INTEGER,
@@ -59,7 +63,7 @@ module.exports = (sequelize, DataTypes) => {
       indexes: [
         {
           unique: true,
-          fields: ['user_id', 'issue_type']
+          fields: ['user_id', 'issue_type_id']  // One SLA per user per issue type
         }
       ]
     }
@@ -67,8 +71,8 @@ module.exports = (sequelize, DataTypes) => {
 
   SLA.associate = (models) => {
     SLA.belongsTo(models.User, { foreignKey: 'user_id', as: 'user' });
+    SLA.belongsTo(models.IssueType, { foreignKey: 'issue_type_id', as: 'issue_type' });
     SLA.hasMany(models.Ticket, { foreignKey: 'sla_id', as: 'tickets' });
-    SLA.hasMany(models.IssueType, { foreignKey: 'sla_id', as: 'issue_types' });
   };
 
   return SLA;

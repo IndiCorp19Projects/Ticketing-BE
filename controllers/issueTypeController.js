@@ -1,16 +1,19 @@
-const { IssueType, Priority, SLA } = require('../models');
-
+// controllers/issueTypeController.js
+const { IssueType, Priority, SLA, User } = require('../models');
 
 exports.listIssueTypes = async (req, res) => {
   try {
-    // REMOVE: subcategoryId filtering
     const where = { is_active: true };
 
     const types = await IssueType.findAll({
       where,
       include: [
-        { model: Priority, as: 'default_priority', attributes: ['priority_id', 'name'] },
-        { model: SLA, as: 'sla', attributes: ['sla_id', 'issue_type', 'response_target_minutes', 'resolve_target_minutes'] }
+        { 
+          model: Priority, 
+          as: 'default_priority', 
+          attributes: ['priority_id', 'name'] 
+        }
+        // REMOVED: SLA inclusion since we don't have direct relationship anymore
       ],
       order: [['name', 'ASC']]
     });
@@ -27,9 +30,8 @@ exports.getIssueType = async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const it = await IssueType.findByPk(id, {
       include: [
-        { model: Priority, as: 'default_priority' }, 
-        { model: SLA, as: 'sla' }
-        // REMOVE: SubCategory inclusion
+        { model: Priority, as: 'default_priority' }
+        // REMOVED: SLA inclusion
       ]
     });
     if (!it) return res.status(404).json({ message: 'IssueType not found' });
@@ -42,25 +44,18 @@ exports.getIssueType = async (req, res) => {
 
 exports.createIssueType = async (req, res) => {
   try {
-    const { name, sla_id, priority_id, description } = req.body;
-    // REMOVE: subcategory_id validation
+    const { name, priority_id, description } = req.body;
+    
     if (!name) return res.status(400).json({ message: 'name is required' });
 
-    // REMOVE: SubCategory lookup
-
-    if (sla_id) {
-      const sla = await SLA.findByPk(sla_id);
-      if (!sla) return res.status(400).json({ message: 'SLA not found' });
-    }
+    // Check if priority exists
     if (priority_id) {
       const pr = await Priority.findByPk(priority_id);
       if (!pr) return res.status(400).json({ message: 'Priority not found' });
     }
 
     const it = await IssueType.create({
-      // REMOVE: subcategory_id
       name: String(name).trim(),
-      sla_id: sla_id ?? null,
       priority_id: priority_id ?? null,
       description: description ?? null,
       is_active: true
@@ -76,21 +71,13 @@ exports.createIssueType = async (req, res) => {
 exports.updateIssueType = async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { name, sla_id, priority_id, description, is_active } = req.body;
-    // REMOVE: subcategory_id from destructuring
+    const { name, priority_id, description, is_active } = req.body;
+    
     const it = await IssueType.findByPk(id);
     if (!it) return res.status(404).json({ message: 'IssueType not found' });
 
-    // REMOVE: subcategory_id update logic
-
     if (name) it.name = String(name).trim();
-    if (sla_id !== undefined) {
-      if (sla_id !== null) {
-        const sla = await SLA.findByPk(sla_id);
-        if (!sla) return res.status(400).json({ message: 'SLA not found' });
-      }
-      it.sla_id = sla_id;
-    }
+    
     if (priority_id !== undefined) {
       if (priority_id !== null) {
         const pr = await Priority.findByPk(priority_id);
@@ -98,6 +85,7 @@ exports.updateIssueType = async (req, res) => {
       }
       it.priority_id = priority_id;
     }
+    
     if (description !== undefined) it.description = description;
     if (is_active !== undefined) it.is_active = !!is_active;
 
@@ -109,15 +97,36 @@ exports.updateIssueType = async (req, res) => {
   }
 };
 
-// deleteIssueType remains the same
-
 exports.deleteIssueType = async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const it = await IssueType.findByPk(id);
     if (!it) return res.status(404).json({ message: 'IssueType not found' });
 
-    // soft delete
+    // Check if issue type is being used by any SLAs
+    const slaCount = await SLA.count({
+      where: { issue_type_id: id, is_active: true }
+    });
+
+    if (slaCount > 0) {
+      return res.status(400).json({ 
+        message: `Cannot deactivate issue type. It is currently being used by ${slaCount} active SLA(s).`
+      });
+    }
+
+    // Check if issue type is being used by any tickets
+    const Ticket = require('../models/Ticket');
+    const ticketCount = await Ticket.count({
+      where: { issue_type_id: id }
+    });
+
+    if (ticketCount > 0) {
+      return res.status(400).json({ 
+        message: `Cannot deactivate issue type. It is currently being used by ${ticketCount} ticket(s).`
+      });
+    }
+
+    // Soft-delete
     await it.update({ is_active: false });
     return res.json({ message: 'IssueType deactivated' });
   } catch (err) {
@@ -125,3 +134,4 @@ exports.deleteIssueType = async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
+
