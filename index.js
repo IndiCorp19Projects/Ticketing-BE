@@ -46,8 +46,6 @@ app.use('/api/admin/subcategories', subCategoryRoutes);
 app.use('/api/admin/priorities', priorityRoutes);
 app.use('/api/admin/issuetypes', issueTypeRoutes);
 app.use('/api/admin/slas', slaRoutes);
-
-
 app.use('/api/ticket', ticketRoutes);
 app.use('/api/admin', adminRoutes);
 

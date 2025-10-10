@@ -1851,55 +1851,6 @@ exports.getUserTickets = async (req, res) => {
 };
 
 // GET /api/ticket/:ticketId
-// exports.getTicketById = async (req, res) => {
-//   try {
-//     const { ticketId } = req.params;
-//     const ticket = await Ticket.findByPk(ticketId, {
-//       include: [
-//         {
-//           model: TicketReply,
-//           as: 'replies',
-//           include: [
-//             { model: User, as: 'sender', attributes: ['user_id', 'username', 'email'] },
-//             { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'mime_type', 'doc_base64', 'created_on'] }
-//           ],
-//         },
-//         { model: User, as: 'creator', attributes: ['user_id', 'username', 'email', 'first_name', 'last_name'] },
-//         { model: SLA, as: 'sla' },
-//         { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'doc_base64', 'mime_type', 'created_on'] }
-//       ],
-//       // order replies by created_at ascending for this single-ticket fetch
-//       order: [
-//         [{ model: TicketReply, as: 'replies' }, 'created_at', 'ASC']
-//       ]
-//     });
-
-//     if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
-//     if (!(await ensureOwnerOrAdmin(req, ticket))) return res.status(403).json({ message: 'Forbidden' });
-
-//     const plain = ticket.toJSON ? ticket.toJSON() : ticket;
-
-//     // JS fallback sort to guarantee order
-//     if (Array.isArray(plain.replies)) {
-//       plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-//     }
-
-//     const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
-//     plain.sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.sla ?? null;
-//     plain.response_sla_met = response_sla_met;
-//     plain.resolve_sla_met = resolve_sla_met;
-//     plain.created_by_username = plain.creator?.username || 'Unknown';
-
-//     return res.json({ ticket: plain });
-//   } catch (err) {
-//     console.error('getTicketById', err);
-//     return res.status(500).json({ message: 'Internal server error' });
-//   }
-// };
-
-
-
-// GET /api/ticket/:ticketId
 exports.getTicketById = async (req, res) => {
   try {
     const { ticketId } = req.params;
@@ -1938,9 +1889,6 @@ exports.getTicketById = async (req, res) => {
     plain.response_sla_met = response_sla_met;
     plain.resolve_sla_met = resolve_sla_met;
     plain.created_by_username = plain.creator?.username || 'Unknown';
-    
-    // Ensure is_other_issue is included
-    plain.is_other_issue = plain.is_other_issue ?? false;
 
     return res.json({ ticket: plain });
   } catch (err) {
@@ -1948,6 +1896,58 @@ exports.getTicketById = async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+
+
+// GET /api/ticket/:ticketId
+// exports.getTicketById = async (req, res) => {
+//   try {
+//     const { ticketId } = req.params;
+//     const ticket = await Ticket.findByPk(ticketId, {
+//       include: [
+//         {
+//           model: TicketReply,
+//           as: 'replies',
+//           include: [
+//             { model: User, as: 'sender', attributes: ['user_id', 'username', 'email'] },
+//             { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'mime_type', 'doc_base64', 'created_on'] }
+//           ],
+//         },
+//         { model: User, as: 'creator', attributes: ['user_id', 'username', 'email', 'first_name', 'last_name'] },
+//         { model: SLA, as: 'sla' },
+//         { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'doc_base64', 'mime_type', 'created_on'] }
+//       ],
+//       // order replies by created_at ascending for this single-ticket fetch
+//       order: [
+//         [{ model: TicketReply, as: 'replies' }, 'created_at', 'ASC']
+//       ]
+//     });
+
+//     if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+//     if (!(await ensureOwnerOrAdmin(req, ticket))) return res.status(403).json({ message: 'Forbidden' });
+
+//     const plain = ticket.toJSON ? ticket.toJSON() : ticket;
+
+//     // JS fallback sort to guarantee order
+//     if (Array.isArray(plain.replies)) {
+//       plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+//     }
+
+//     const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
+//     plain.sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.sla ?? null;
+//     plain.response_sla_met = response_sla_met;
+//     plain.resolve_sla_met = resolve_sla_met;
+//     plain.created_by_username = plain.creator?.username || 'Unknown';
+    
+//     // Ensure is_other_issue is included
+//     plain.is_other_issue = plain.is_other_issue ?? false;
+
+//     return res.json({ ticket: plain });
+//   } catch (err) {
+//     console.error('getTicketById', err);
+//     return res.status(500).json({ message: 'Internal server error' });
+//   }
+// };
 
 // GET /api/ticket/admin/all
 exports.adminGetAllTickets = async (req, res) => {

@@ -1,5 +1,6 @@
 const { IssueType, Priority, SLA } = require('../models');
 
+
 exports.listIssueTypes = async (req, res) => {
   try {
     // REMOVE: subcategoryId filtering
