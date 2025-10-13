@@ -46,7 +46,7 @@ router.put('/:id', slaController.updateSLA);
 router.delete('/:id', slaController.deleteSLA);
 
 // New routes for user + issue type combination
-router.get('/user/:userId/issue-type/:issueTypeId/all', slaController.getSLAForUserAndIssueType);
+// router.get('/user/:userId/issue-type/:issueTypeId/all', slaController.getSLAForUserAndIssueType);
 router.get('/user/:userId/issue-type/:issueTypeId/primary', slaController.getPrimarySLAForUserAndIssueType);
 
 module.exports = router;

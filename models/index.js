@@ -24,6 +24,8 @@ const Category = require('./Category')(sequelize, Sequelize.DataTypes);
 const SubCategory = require('./SubCategory')(sequelize, Sequelize.DataTypes);
 const IssueType = require('./IssueType')(sequelize, Sequelize.DataTypes);
 const Priority = require('./Priority')(sequelize, Sequelize.DataTypes);
+const WorkingHours = require('./WorkingHours')(sequelize, Sequelize.DataTypes);
+const SystemRegistration = require('./SystemRegistration')(sequelize, Sequelize.DataTypes);
 
 // FIXED: Use correct property names - don't overwrite Document with IssueType
 dbObj.User = User;
@@ -37,6 +39,8 @@ dbObj.Category = Category;
 dbObj.SubCategory = SubCategory;
 dbObj.IssueType = IssueType; // Fixed: Use IssueType, not Document
 dbObj.Priority = Priority;   // Fixed: Use Priority, not priority
+dbObj.WorkingHours = WorkingHours;
+dbObj.SystemRegistration = SystemRegistration; // ADD THIS
 
 // call associate on each model if present (once)
 Object.keys(dbObj).forEach((key) => {

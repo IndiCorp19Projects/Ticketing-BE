@@ -16,6 +16,7 @@ const priorityRoutes = require('./routes/priorityRoutes');
 const issueTypeRoutes = require('./routes/issueTypeRoutes');
 const slaRoutes = require('./routes/slaRoutes');
 const userRoutes = require('./routes/userRoutes');
+const systemRoutes = require('./routes/system');
 
 const app = express();
 
@@ -48,9 +49,12 @@ app.use('/api/admin/issuetypes', issueTypeRoutes);
 app.use('/api/admin/slas', slaRoutes);
 app.use('/api/ticket', ticketRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/system', systemRoutes);
 
 
 
+// Add this line to your main routes file
+app.use('/api/working-hours', require('./routes/workingHours'));
 
 
 app.get('/', (req, res) => res.send('Ticketing system API running'));

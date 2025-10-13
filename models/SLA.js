@@ -1,4 +1,3 @@
-// models/SLA.js
 module.exports = (sequelize, DataTypes) => {
   const SLA = sequelize.define(
     'SLA',
@@ -16,12 +15,24 @@ module.exports = (sequelize, DataTypes) => {
           key: 'user_id'
         }
       },
-      issue_type_id: {  // Changed from issue_type string to issue_type_id
+      name: {
+        type: DataTypes.STRING(150),
+        allowNull: false
+      },
+      issue_type_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
           model: 'issue_type',
           key: 'issue_type_id'
+        }
+      },
+      working_hours_id: {  // ADD THIS FIELD
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'working_hours',
+          key: 'working_hours_id'
         }
       },
       response_target_minutes: {
@@ -63,7 +74,11 @@ module.exports = (sequelize, DataTypes) => {
       indexes: [
         {
           unique: true,
-          fields: ['user_id', 'issue_type_id']  // One SLA per user per issue type
+          fields: ['user_id', 'issue_type_id']
+        },
+        {
+          unique: true,
+          fields: ['user_id', 'name']
         }
       ]
     }
@@ -71,7 +86,16 @@ module.exports = (sequelize, DataTypes) => {
 
   SLA.associate = (models) => {
     SLA.belongsTo(models.User, { foreignKey: 'user_id', as: 'user' });
-    SLA.belongsTo(models.IssueType, { foreignKey: 'issue_type_id', as: 'issue_type' });
+    SLA.belongsTo(models.IssueType, { 
+      foreignKey: 'issue_type_id', 
+      as: 'issue_type',
+      constraints: false
+    });
+    SLA.belongsTo(models.WorkingHours, {  // ADD THIS ASSOCIATION
+      foreignKey: 'working_hours_id',
+      as: 'working_hours',
+      constraints: false
+    });
     SLA.hasMany(models.Ticket, { foreignKey: 'sla_id', as: 'tickets' });
   };
 

@@ -2,11 +2,12 @@ const express = require('express');
 const router = express.Router();
 const ticketController = require('../controllers/ticketController');
 const authMiddleware = require('../middleware/authMiddleware');
+// const { authenticateToken } = require('../middleware/auth'); // Use existing auth
 const upload = require('../middleware/uploadMemory'); // NEW
 
 // All user endpoints require authentication
 router.use(authMiddleware);
-
+// router.use(authenticateToken);
 
 
 router.post('/raise', upload.array('files'), ticketController.raiseTicket);

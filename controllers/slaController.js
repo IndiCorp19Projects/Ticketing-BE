@@ -1,5 +1,5 @@
 // controllers/slaController.js
-const { SLA, User, IssueType, sequelize } = require('../models');
+const { SLA, User, IssueType, Ticket, sequelize } = require('../models');
 
 exports.listSLAs = async (req, res) => {
   try {
@@ -62,7 +62,8 @@ exports.createSLA = async (req, res) => {
   try {
     const {
       user_id,
-      issue_type_id, // Now we take issue_type_id instead of issue_type string
+      name,
+      issue_type_id,
       response_target_minutes,
       resolve_target_minutes,
       is_active,
@@ -73,6 +74,11 @@ exports.createSLA = async (req, res) => {
     if (!user_id) {
       await t.rollback();
       return res.status(400).json({ message: 'user_id is required' });
+    }
+
+    if (!name || name.trim() === '') {
+      await t.rollback();
+      return res.status(400).json({ message: 'SLA name is required' });
     }
 
     if (!issue_type_id) {
@@ -97,19 +103,52 @@ exports.createSLA = async (req, res) => {
     }
 
     // Check uniqueness (user_id + issue_type_id combination)
-    const existing = await SLA.findOne({
+    const existingIssueTypeSLA = await SLA.findOne({
       where: { user_id, issue_type_id }
     });
 
-    if (existing) {
+    if (existingIssueTypeSLA) {
       await t.rollback();
       return res.status(409).json({ 
         message: 'SLA for this user and issue type already exists' 
       });
     }
 
+    // Check uniqueness (user_id + name combination)
+    const existingNameSLA = await SLA.findOne({
+      where: { user_id, name: name.trim() }
+    });
+
+    if (existingNameSLA) {
+      await t.rollback();
+      return res.status(409).json({ 
+        message: 'SLA with this name already exists for this user' 
+      });
+    }
+
+
+    // In createSLA method - add this check if you want issue types to be globally unique
+const globalIssueTypeCheck = await SLA.findOne({
+  where: { 
+    issue_type_id: Number(issue_type_id),
+    is_active: true
+  }
+});
+
+if (globalIssueTypeCheck) {
+  await t.rollback();
+  return res.status(409).json({ 
+    message: 'This issue type is already associated with another SLA' 
+  });
+}
+
+
+
+    
+
     const sla = await SLA.create({
       user_id: Number(user_id),
+      name: name.trim(),
       issue_type_id: Number(issue_type_id),
       response_target_minutes: Number(response_target_minutes) || 60,
       resolve_target_minutes: Number(resolve_target_minutes) || 1440,
@@ -149,6 +188,7 @@ exports.updateSLA = async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const {
       user_id,
+      name,
       issue_type_id,
       response_target_minutes,
       resolve_target_minutes,
@@ -172,6 +212,25 @@ exports.updateSLA = async (req, res) => {
       sla.user_id = Number(user_id);
     }
 
+    // Check name uniqueness if name is being updated
+    if (name && name.trim() !== sla.name) {
+      const existingNameSLA = await SLA.findOne({
+        where: { 
+          user_id: sla.user_id, 
+          name: name.trim() 
+        },
+        transaction: t
+      });
+      
+      if (existingNameSLA && existingNameSLA.sla_id !== sla.sla_id) {
+        await t.rollback();
+        return res.status(409).json({ 
+          message: 'Another SLA with this name already exists for this user' 
+        });
+      }
+      sla.name = name.trim();
+    }
+
     if (issue_type_id && Number(issue_type_id) !== sla.issue_type_id) {
       // Check if issue type exists and is active
       const issueType = await IssueType.findOne({
@@ -184,7 +243,7 @@ exports.updateSLA = async (req, res) => {
       }
 
       // Check uniqueness for new user_id + issue_type_id combination
-      const existing = await SLA.findOne({
+      const existingIssueTypeSLA = await SLA.findOne({
         where: { 
           user_id: sla.user_id, 
           issue_type_id: Number(issue_type_id) 
@@ -192,7 +251,7 @@ exports.updateSLA = async (req, res) => {
         transaction: t
       });
       
-      if (existing && existing.sla_id !== sla.sla_id) {
+      if (existingIssueTypeSLA && existingIssueTypeSLA.sla_id !== sla.sla_id) {
         await t.rollback();
         return res.status(409).json({ 
           message: 'Another SLA with this user and issue type already exists' 
@@ -296,7 +355,7 @@ exports.getSLAsByUser = async (req, res) => {
           attributes: ['issue_type_id', 'name']
         }
       ],
-      order: [['issue_type_id', 'ASC']]
+      order: [['name', 'ASC']]
     });
 
     return res.json({ slas });
@@ -338,102 +397,37 @@ exports.getIssueTypesForSLA = async (req, res) => {
   }
 };
 
+// Get available SLAs for an issue type and user
+exports.getUserSLAsForIssueType = async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    const issueTypeId = parseInt(req.params.issueTypeId, 10);
+    
+    if (!userId || !issueTypeId) {
+      return res.status(400).json({ message: 'User ID and Issue Type ID are required' });
+    }
 
+    const slas = await SLA.findAll({
+      where: { 
+        user_id: userId,
+        issue_type_id: issueTypeId,
+        is_active: true 
+      },
+      order: [['name', 'ASC']]
+    });
 
+    return res.json({ 
+      user_id: userId,
+      issue_type_id: issueTypeId,
+      slas: slas 
+    });
+  } catch (err) {
+    console.error('getUserSLAsForIssueType', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
 
-// controllers/slaController.js - Add this method
-// exports.getSLAForUserAndIssueType = async (req, res) => {
-//   try {
-//     const userId = parseInt(req.params.userId, 10);
-//     const issueTypeId = parseInt(req.params.issueTypeId, 10);
-
-//     if (!userId || !issueTypeId) {
-//       return res.status(400).json({ message: 'User ID and Issue Type ID are required' });
-//     }
-
-//     // Verify user exists
-//     const user = await User.findByPk(userId);
-//     if (!user) {
-//       return res.status(404).json({ message: 'User not found' });
-//     }
-
-//     // Verify issue type exists and is active
-//     const issueType = await IssueType.findOne({
-//       where: { issue_type_id: issueTypeId, is_active: true }
-//     });
-//     if (!issueType) {
-//       return res.status(404).json({ message: 'Issue type not found or inactive' });
-//     }
-
-//     // Get all active SLAs for this user and issue type
-//     const slas = await SLA.findAll({
-//       where: {
-//         user_id: userId,
-//         issue_type_id: issueTypeId,
-//         is_active: true
-//       },
-//       include: [
-//         {
-//           model: User,
-//           as: 'user',
-//           attributes: ['user_id', 'username', 'first_name', 'last_name']
-//         },
-//         {
-//           model: IssueType,
-//           as: 'issue_type',
-//           attributes: ['issue_type_id', 'name', 'description']
-//         }
-//       ],
-//       order: [
-//         ['response_target_minutes', 'ASC'], // Sort by fastest response time first
-//         ['resolve_target_minutes', 'ASC']   // Then by fastest resolve time
-//       ]
-//     });
-
-//     if (slas.length === 0) {
-//       return res.status(404).json({ 
-//         message: 'No active SLA found for this user and issue type combination',
-//         user_id: userId,
-//         issue_type_id: issueTypeId
-//       });
-//     }
-
-//     return res.json({
-//       user: {
-//         user_id: user.user_id,
-//         username: user.username,
-//         first_name: user.first_name,
-//         last_name: user.last_name
-//       },
-//       issue_type: {
-//         issue_type_id: issueType.issue_type_id,
-//         name: issueType.name,
-//         description: issueType.description
-//       },
-//       slas: slas.map(sla => ({
-//         sla_id: sla.sla_id,
-//         name: sla.name,
-//         response_target_minutes: sla.response_target_minutes,
-//         resolve_target_minutes: sla.resolve_target_minutes,
-//         created_on: sla.created_on,
-//         created_by: sla.created_by
-//       })),
-//       sla_count: slas.length,
-//       // Return the primary SLA (first one based on sorting)
-//       primary_sla: slas[0] ? {
-//         sla_id: slas[0].sla_id,
-//         name: slas[0].name,
-//         response_target_minutes: slas[0].response_target_minutes,
-//         resolve_target_minutes: slas[0].resolve_target_minutes
-//       } : null
-//     });
-//   } catch (err) {
-//     console.error('getSLAForUserAndIssueType', err);
-//     return res.status(500).json({ message: 'Internal server error' });
-//   }
-// };
-
-// Alternative version that returns a single SLA (for backward compatibility)
+// Get primary SLA for user and issue type
 exports.getPrimarySLAForUserAndIssueType = async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
@@ -443,7 +437,7 @@ exports.getPrimarySLAForUserAndIssueType = async (req, res) => {
       return res.status(400).json({ message: 'User ID and Issue Type ID are required' });
     }
 
-    // Get the primary SLA (fastest response time)
+    // Get the primary SLA
     const sla = await SLA.findOne({
       where: {
         user_id: userId,
@@ -499,214 +493,6 @@ exports.getPrimarySLAForUserAndIssueType = async (req, res) => {
     });
   } catch (err) {
     console.error('getPrimarySLAForUserAndIssueType', err);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
-
-
-// Get user-specific issue types with their SLAs
-exports.getUserIssueTypesWithSLA = async (req, res) => {
-  try {
-    const userId = parseInt(req.params.userId, 10);
-    
-    if (!userId) {
-      return res.status(400).json({ message: 'User ID is required' });
-    }
-
-    // Verify user exists
-    const user = await User.findByPk(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Get all active issue types
-    const issueTypes = await IssueType.findAll({
-      where: { is_active: true },
-      include: [
-        { 
-          model: Priority, 
-          as: 'default_priority', 
-          attributes: ['priority_id', 'name', 'level'] 
-        }
-      ],
-      order: [['name', 'ASC']]
-    });
-
-    // Get user-specific SLAs
-    const userSLAs = await SLA.findAll({
-      where: { 
-        user_id: userId,
-        is_active: true 
-      },
-      include: [{
-        model: IssueType,
-        as: 'issue_type',
-        attributes: ['issue_type_id', 'name']
-      }]
-    });
-
-    // Create a map of user SLAs by issue type ID
-    const userSLAMap = {};
-    userSLAs.forEach(sla => {
-      if (sla.issue_type) {
-        userSLAMap[sla.issue_type.issue_type_id] = {
-          sla_id: sla.sla_id,
-          name: sla.name,
-          response_target_minutes: sla.response_target_minutes,
-          resolve_target_minutes: sla.resolve_target_minutes
-        };
-      }
-    });
-
-    // Combine issue types with user-specific SLAs
-    const userIssueTypes = issueTypes.map(issueType => {
-      const issueTypeData = issueType.get({ plain: true });
-      const userSLA = userSLAMap[issueTypeData.issue_type_id] || null;
-      
-      return {
-        issue_type_id: issueTypeData.issue_type_id,
-        name: issueTypeData.name,
-        description: issueTypeData.description,
-        default_priority: issueTypeData.default_priority,
-        priority_id: issueTypeData.priority_id,
-        user_sla: userSLA,
-        has_user_specific_sla: !!userSLA
-      };
-    });
-
-    return res.json({ 
-      user: {
-        user_id: user.user_id,
-        username: user.username,
-        first_name: user.first_name,
-        last_name: user.last_name
-      },
-      issue_types: userIssueTypes 
-    });
-  } catch (err) {
-    console.error('getUserIssueTypesWithSLA', err);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
-
-// Get available SLAs for an issue type and user
-exports.getUserSLAsForIssueType = async (req, res) => {
-  try {
-    const userId = parseInt(req.params.userId, 10);
-    const issueTypeId = parseInt(req.params.issueTypeId, 10);
-    
-    if (!userId || !issueTypeId) {
-      return res.status(400).json({ message: 'User ID and Issue Type ID are required' });
-    }
-
-    const slas = await SLA.findAll({
-      where: { 
-        user_id: userId,
-        issue_type_id: issueTypeId,
-        is_active: true 
-      },
-      order: [['name', 'ASC']]
-    });
-
-    return res.json({ 
-      user_id: userId,
-      issue_type_id: issueTypeId,
-      slas: slas 
-    });
-  } catch (err) {
-    console.error('getUserSLAsForIssueType', err);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
-
-
-exports.getSLAForUserAndIssueType = async (req, res) => {
-  try {
-    const userId = parseInt(req.params.userId, 10);
-    const issueTypeId = parseInt(req.params.issueTypeId, 10);
-
-    if (!userId || !issueTypeId) {
-      return res.status(400).json({ message: 'User ID and Issue Type ID are required' });
-    }
-
-    // Verify user exists
-    const user = await User.findByPk(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Verify issue type exists and is active
-    const issueType = await IssueType.findOne({
-      where: { issue_type_id: issueTypeId, is_active: true }
-    });
-    if (!issueType) {
-      return res.status(404).json({ message: 'Issue type not found or inactive' });
-    }
-
-    // Get all active SLAs for this user and issue type
-    const slas = await SLA.findAll({
-      where: {
-        user_id: userId,
-        issue_type_id: issueTypeId,
-        is_active: true
-      },
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['user_id', 'username', 'first_name', 'last_name']
-        },
-        {
-          model: IssueType,
-          as: 'issue_type',
-          attributes: ['issue_type_id', 'name', 'description']
-        }
-      ],
-      order: [
-        ['response_target_minutes', 'ASC'], // Sort by fastest response time first
-        ['resolve_target_minutes', 'ASC']   // Then by fastest resolve time
-      ]
-    });
-
-    if (slas.length === 0) {
-      return res.status(404).json({ 
-        message: 'No active SLA found for this user and issue type combination',
-        user_id: userId,
-        issue_type_id: issueTypeId
-      });
-    }
-
-    return res.json({
-      user: {
-        user_id: user.user_id,
-        username: user.username,
-        first_name: user.first_name,
-        last_name: user.last_name
-      },
-      issue_type: {
-        issue_type_id: issueType.issue_type_id,
-        name: issueType.name,
-        description: issueType.description
-      },
-      slas: slas.map(sla => ({
-        sla_id: sla.sla_id,
-        name: sla.name,
-        response_target_minutes: sla.response_target_minutes,
-        resolve_target_minutes: sla.resolve_target_minutes,
-        created_on: sla.created_on,
-        created_by: sla.created_by
-      })),
-      sla_count: slas.length,
-      // Return the primary SLA (first one based on sorting)
-      primary_sla: slas[0] ? {
-        sla_id: slas[0].sla_id,
-        name: slas[0].name,
-        response_target_minutes: slas[0].response_target_minutes,
-        resolve_target_minutes: slas[0].resolve_target_minutes
-      } : null
-    });
-  } catch (err) {
-    console.error('getSLAForUserAndIssueType', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
