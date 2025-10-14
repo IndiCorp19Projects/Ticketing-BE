@@ -226,7 +226,7 @@ exports.replyToTicket = async (req, res) => {
       newPriority = String(requestedPriority).trim();
       
       // Validate priority - you might want to fetch available priorities from DB
-      const validPriorities = ['Low', 'Medium', 'High', 'Critical', 'Urgent']; // Adjust based on your priorities
+      const validPriorities = ['low', 'medium', 'high', 'critical', 'urgent']; // Adjust based on your priorities
       if (!validPriorities.includes(newPriority)) {
         await t.rollback();
         return res.status(400).json({ message: `Invalid priority. Allowed: ${validPriorities.join(', ')}` });

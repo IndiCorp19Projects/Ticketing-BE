@@ -26,12 +26,21 @@ app.use(cookieParser());
 
 
 // ✅ Allow frontend (http://localhost:5173 for Vite)
+// app.use(
+//   cors({
+//     origin: "http://localhost:3000", // frontend URL
+//     credentials: true, // ✅ allow cookies
+//   })
+// );
+
+
 app.use(
   cors({
-    origin: "http://localhost:3000", // frontend URL
-    credentials: true, // ✅ allow cookies
+    origin: ["http://localhost:3000", "http://localhost:3001"],
+    credentials: true,
   })
 );
+
 
 
 app.get("/api/check", (req, res) => {
