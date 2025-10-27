@@ -1,8 +1,8 @@
-// middleware/authMiddleware.js - ENHANCED VERSION
 const jwt = require('jsonwebtoken');
 const { jwtSecret } = require('../config/config');
 const { User, Client } = require('../models');
 
+// This middleware will try to authenticate either user or client
 module.exports = async (req, res, next) => {
   try {
     // Try user token first
@@ -16,7 +16,7 @@ module.exports = async (req, res, next) => {
       if (user && user.is_active) {
         req.user = {
           id: user.user_id,
-          user_id: user.user_id, // Ensure both are set
+          user_id: user.user_id,
           username: user.username,
           email: user.email,
           role_name: user.role_name,
@@ -38,7 +38,7 @@ module.exports = async (req, res, next) => {
         if (client && client.is_active) {
           req.client = {
             id: client.client_id,
-            client_id: client.client_id, // Ensure both are set
+            client_id: client.client_id,
             company_name: client.company_name,
             email: client.email,
             type: 'client'
@@ -48,6 +48,7 @@ module.exports = async (req, res, next) => {
       }
     }
 
+    // If neither token is valid
     return res.status(401).json({ message: 'Authentication required' });
     
   } catch (err) {

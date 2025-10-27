@@ -65,6 +65,14 @@ app.use('/api/system', systemRoutes);
 // Add this line to your main routes file
 app.use('/api/working-hours', require('./routes/workingHours'));
 
+const clientAuthRoutes = require('./routes/clientAuthRoutes');
+const clientTicketRoutes = require('./routes/clientTicketRoutes');
+
+// Add these routes after your existing routes
+app.use('/api/client/auth', clientAuthRoutes);
+app.use('/api/client/tickets', clientTicketRoutes);
+
+
 
 app.get('/', (req, res) => res.send('Ticketing system API running'));
 

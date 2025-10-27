@@ -4,7 +4,8 @@ module.exports = (sequelize, DataTypes) => {
     'Ticket',
     {
       ticket_id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-      user_id: { type: DataTypes.INTEGER, allowNull: false },
+      user_id: { type: DataTypes.INTEGER, allowNull: true },
+      client_id: { type: DataTypes.INTEGER, allowNull: true },
 
       // link to category/subcategory/issuetype
       category_id: { type: DataTypes.INTEGER, allowNull: true },
@@ -47,6 +48,38 @@ module.exports = (sequelize, DataTypes) => {
       resolve_time_seconds: { type: DataTypes.INTEGER, allowNull: true },
       last_updated_by: { type: DataTypes.STRING(100), allowNull: true },
       assigned_to: { type: DataTypes.INTEGER, allowNull: true },
+
+
+
+client_user_id: { 
+      type: DataTypes.STRING(255), 
+      allowNull: true 
+    },
+    client_user_name: { 
+      type: DataTypes.STRING(255), 
+      allowNull: true 
+    },
+    client_user_email: { 
+      type: DataTypes.STRING(255), 
+      allowNull: true 
+    },
+    client_user_role: { 
+      type: DataTypes.ENUM('admin', 'user'), 
+      defaultValue: 'user',
+      allowNull: false
+    },
+      assigned_client_user_id: { 
+        type: DataTypes.STRING(255), 
+        allowNull: true 
+      },
+      assigned_client_user_name: { 
+        type: DataTypes.STRING(255), 
+        allowNull: true 
+      },
+      assigned_client_user_email: { 
+        type: DataTypes.STRING(255), 
+        allowNull: true 
+      },
     },
     {
       tableName: 'ticket',
@@ -54,36 +87,51 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
-  Ticket.associate = (models) => {
-    Ticket.belongsTo(models.User, { foreignKey: 'user_id', as: 'creator' });
+Ticket.associate = (models) => {
+  Ticket.belongsTo(models.User, { foreignKey: 'user_id', as: 'creator' });
+  
+  // ADD Client association
+  Ticket.belongsTo(models.Client, { 
+    foreignKey: 'client_id', 
+    as: 'client',
+    constraints: false 
+  });
 
-    Ticket.belongsTo(models.Category, { foreignKey: 'category_id', as: 'category_obj', constraints: false });
-    Ticket.belongsTo(models.SubCategory, { foreignKey: 'subcategory_id', as: 'subcategory_obj', constraints: false });
-    Ticket.belongsTo(models.IssueType, { foreignKey: 'issue_type_id', as: 'issue_type_obj', constraints: false });
+  Ticket.belongsTo(models.Category, { foreignKey: 'category_id', as: 'category_obj', constraints: false });
+  Ticket.belongsTo(models.SubCategory, { foreignKey: 'subcategory_id', as: 'subcategory_obj', constraints: false });
+  Ticket.belongsTo(models.IssueType, { foreignKey: 'issue_type_id', as: 'issue_type_obj', constraints: false });
+  Ticket.belongsTo(models.Priority, { foreignKey: 'priority_id', as: 'priority_obj', constraints: false });
 
-    Ticket.belongsTo(models.Priority, { foreignKey: 'priority_id', as: 'priority_obj', constraints: false });
+  Ticket.hasMany(models.TicketReply, { foreignKey: 'ticket_id', as: 'replies' });
 
-    Ticket.hasMany(models.TicketReply, { foreignKey: 'ticket_id', as: 'replies' });
+  if (models.TicketImage) {
+    Ticket.hasMany(models.TicketImage, { foreignKey: 'ticket_id', as: 'images' });
+  }
 
-    if (models.TicketImage) {
-      Ticket.hasMany(models.TicketImage, { foreignKey: 'ticket_id', as: 'images' });
-    }
+  if (models.SLA) {
+    Ticket.belongsTo(models.SLA, { foreignKey: 'sla_id', as: 'sla' });
+  }
 
-    if (models.SLA) {
-      Ticket.belongsTo(models.SLA, { foreignKey: 'sla_id', as: 'sla' });
-    }
+  // ADD ClientSLA association
+  if (models.ClientSLA) {
+    Ticket.belongsTo(models.ClientSLA, { 
+      foreignKey: 'client_sla_id', 
+      as: 'client_sla',
+      constraints: false 
+    });
+  }
 
-    if (models.Document) {
-      Ticket.hasMany(models.Document, {
-        foreignKey: 'linked_id',
-        as: 'documents',
-        scope: { table_name: 'ticket' },
-        constraints: false
-      });
-    }
+  if (models.Document) {
+    Ticket.hasMany(models.Document, {
+      foreignKey: 'linked_id',
+      as: 'documents',
+      scope: { table_name: 'ticket' },
+      constraints: false
+    });
+  }
 
-    Ticket.belongsTo(models.User, { foreignKey: 'assigned_to', as: 'assignee', constraints: false });
-  };
+  Ticket.belongsTo(models.User, { foreignKey: 'assigned_to', as: 'assignee', constraints: false });
+};
 
   return Ticket;
 };

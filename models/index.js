@@ -27,6 +27,9 @@ const Priority = require('./Priority')(sequelize, Sequelize.DataTypes);
 const WorkingHours = require('./WorkingHours')(sequelize, Sequelize.DataTypes);
 const SystemRegistration = require('./SystemRegistration')(sequelize, Sequelize.DataTypes);
 
+const Client = require('./client')(sequelize, Sequelize.DataTypes);
+const ClientSLA = require('./clientSLA')(sequelize, Sequelize.DataTypes);
+
 // FIXED: Use correct property names - don't overwrite Document with IssueType
 dbObj.User = User;
 dbObj.Ticket = Ticket;
@@ -41,6 +44,9 @@ dbObj.IssueType = IssueType; // Fixed: Use IssueType, not Document
 dbObj.Priority = Priority;   // Fixed: Use Priority, not priority
 dbObj.WorkingHours = WorkingHours;
 dbObj.SystemRegistration = SystemRegistration; // ADD THIS
+
+dbObj.Client = Client;
+dbObj.ClientSLA = ClientSLA;
 
 // call associate on each model if present (once)
 Object.keys(dbObj).forEach((key) => {

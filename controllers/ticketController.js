@@ -1,97 +1,43 @@
 // controllers/ticketController.js
-// const { Ticket, TicketReply, Document, sequelize, User, SLA } = require('../models');
-const { Ticket, TicketReply, Document, sequelize, User, SLA, Category, SubCategory, IssueType, Priority , WorkingHours } = require('../models');
+const { Ticket, TicketReply, Document, sequelize, User, SLA, Category, SubCategory, IssueType, Priority, WorkingHours, Client, ClientSLA } = require('../models');
 const { sendMail } = require('../utils/mailer');
 const { ticketCreatedTemplate, ticketReplyTemplate, ticketStatusChangedTemplate } = require('../utils/emailTemplates');
 const SLACalculator = require('../utils/slaCalculator');
-// const ensureOwnerOrAdmin = async (req, ticket) => {
-//   if (!ticket) return false;
-//   if (req.user && req.user.role_name === 'admin' || req.user.role_name === 'executive') return true;
-//   const uid = req.user && (req.user.id ?? req.user.user_id);
-//   return ticket.user_id === uid;
-// };
 
-
-
-// In controllers/ticketController.js - UPDATE THESE FUNCTIONS
-
-// In controllers/ticketController.js - UPDATE THESE FUNCTIONS
-
-// In controllers/ticketController.js - UPDATE THESE FUNCTIONS
-
-const ensureOwnerOrAdmin = async (req, ticket) => {
-  if (!ticket) return false;
-  
-  // Systems can access tickets they created
-  if (req.user && (req.user.role_name === 'admin' || req.user.role_name === 'executive' || req.user.role_name === 'system')) {
-    // For systems, they can only access their own tickets (unless admin/executive)
-    if (req.user.role_name === 'system') {
-      return ticket.user_id === req.user.id;
-    }
-    return true;
-  }
-  
-  const uid = req.user && (req.user.id ?? req.user.user_id);
-  return ticket.user_id === uid;
-};
-
-const ensureCanReply = async (req, ticket) => {
-  if (!ticket) return false;
-  const uid = req.user && (req.user.id ?? req.user.user_id);
-  if (!req.user) return false;
-  
-  // Systems can reply to tickets they created
-  if (req.user.role_name === 'admin' || req.user.role_name === 'system') {
-    if (req.user.role_name === 'system') {
-      return ticket.user_id === uid; // Systems can only reply to their own tickets
-    }
-    return true;
-  }
-  
-  if (req.user.role_name === 'user') return ticket.user_id === uid;
-  if (req.user.role_name === 'executive') {
-    return Number(ticket.assigned_to) === Number(uid);
-  }
-  return false;
-};
-
+// Helper functions
 function secondsBetween(a, b) {
   if (!a || !b) return null;
   return Math.floor((new Date(b).getTime() - new Date(a).getTime()) / 1000);
 }
 
-// async function computeSLACompliance(ticket) {
-//   if (!ticket) return { response_sla_met: null, resolve_sla_met: null, sla: null };
-//   let sla = ticket.sla ?? null;
-//   if (!sla && ticket.sla_id) sla = await SLA.findByPk(ticket.sla_id);
-//   let response_sla_met = null;
-//   let resolve_sla_met = null;
-//   if (sla) {
-//     if (ticket.response_time_seconds != null) {
-//       response_sla_met = ticket.response_time_seconds <= (sla.response_target_minutes * 60);
-//     }
-//     if (ticket.resolve_time_seconds != null) {
-//       resolve_sla_met = ticket.resolve_time_seconds <= (sla.resolve_target_minutes * 60);
-//     }
-//   }
-//   return { response_sla_met, resolve_sla_met, sla };
-// }
-
-
+// Compute SLA compliance for both user and client tickets
 async function computeSLACompliance(ticket) {
   if (!ticket) return { response_sla_met: null, resolve_sla_met: null, sla: null };
   
-  let sla = ticket.sla ?? null;
-  if (!sla && ticket.sla_id) {
-    sla = await SLA.findByPk(ticket.sla_id, {
-      include: [
-        {
-          model: WorkingHours,
-          as: 'working_hours',
-          attributes: ['working_hours_id', 'working_days', 'start_time', 'end_time', 'timezone']
-        }
-      ]
-    });
+  let sla = ticket.sla ?? ticket.client_sla ?? null;
+  
+  if (!sla) {
+    if (ticket.sla_id) {
+      sla = await SLA.findByPk(ticket.sla_id, {
+        include: [
+          {
+            model: WorkingHours,
+            as: 'working_hours',
+            attributes: ['working_hours_id', 'working_days', 'start_time', 'end_time', 'timezone']
+          }
+        ]
+      });
+    } else if (ticket.client_sla_id) {
+      sla = await ClientSLA.findByPk(ticket.client_sla_id, {
+        include: [
+          {
+            model: WorkingHours,
+            as: 'working_hours',
+            attributes: ['working_hours_id', 'working_days', 'start_time', 'end_time', 'timezone']
+          }
+        ]
+      });
+    }
   }
 
   let response_sla_met = null;
@@ -100,7 +46,6 @@ async function computeSLACompliance(ticket) {
   if (sla) {
     if (ticket.response_at && sla.response_target_minutes) {
       if (sla.working_hours) {
-        // Calculate actual working minutes used for response
         const actualWorkingMinutes = SLACalculator.getWorkingMinutesBetween(
           new Date(ticket.created_at),
           new Date(ticket.response_at),
@@ -108,14 +53,12 @@ async function computeSLACompliance(ticket) {
         );
         response_sla_met = actualWorkingMinutes <= sla.response_target_minutes;
       } else {
-        // Fallback to simple time calculation
         response_sla_met = ticket.response_time_seconds <= (sla.response_target_minutes * 60);
       }
     }
 
     if (ticket.resolved_at && sla.resolve_target_minutes) {
       if (sla.working_hours) {
-        // Calculate actual working minutes used for resolution
         const actualWorkingMinutes = SLACalculator.getWorkingMinutesBetween(
           new Date(ticket.created_at),
           new Date(ticket.resolved_at),
@@ -123,7 +66,6 @@ async function computeSLACompliance(ticket) {
         );
         resolve_sla_met = actualWorkingMinutes <= sla.resolve_target_minutes;
       } else {
-        // Fallback to simple time calculation
         resolve_sla_met = ticket.resolve_time_seconds <= (sla.resolve_target_minutes * 60);
       }
     }
@@ -132,626 +74,562 @@ async function computeSLACompliance(ticket) {
   return { response_sla_met, resolve_sla_met, sla };
 }
 
+// Permission checking functions
+const ensureOwnerOrAdmin = async (req, ticket) => {
+  if (!ticket) return false;
+  
+  // Admin and executives can access all tickets
+  if (req.user && (req.user.role_name === 'admin' || req.user.role_name === 'executive')) {
+    return true;
+  }
+  
+  // Systems can access their own tickets
+  if (req.user && req.user.role_name === 'system') {
+    return ticket.user_id === req.user.id;
+  }
+  
+  // Users can access their own tickets
+  if (req.user && req.user.role_name === 'user') {
+    return ticket.user_id === req.user.id;
+  }
+  
+  // Clients can access their own tickets
+  if (req.client) {
+    return ticket.client_id === req.client.id;
+  }
+  
+  return false;
+};
 
-// const ensureCanReply = async (req, ticket) => {
-//   if (!ticket) return false;
-//   const uid = req.user && (req.user.id ?? req.user.user_id);
-//   if (!req.user) return false;
-//   if (req.user.role_name === 'admin') return true;
-//   if (req.user.role_name === 'user') return ticket.user_id === uid;
-//   if (req.user.role_name === 'executive') {
-//     // only if assigned_to equals exec id
-//     return Number(ticket.assigned_to) === Number(uid);
+const ensureCanReply = async (req, ticket) => {
+  if (!ticket) return false;
+  
+  // Admin can reply to any ticket
+  if (req.user && req.user.role_name === 'admin') {
+    return true;
+  }
+  
+  // Systems can reply to tickets they created
+  if (req.user && req.user.role_name === 'system') {
+    return ticket.user_id === req.user.id;
+  }
+  
+  // Executives can reply to assigned tickets
+  if (req.user && req.user.role_name === 'executive') {
+    return Number(ticket.assigned_to) === Number(req.user.id);
+  }
+  
+  // Users can reply to their own tickets
+  if (req.user && req.user.role_name === 'user') {
+    return ticket.user_id === req.user.id;
+  }
+  
+  // Clients can reply to their own tickets
+  if (req.client) {
+    return ticket.client_id === req.client.id;
+  }
+  
+  return false;
+};
+
+// Get all tickets for admin (both user and client tickets)
+// exports.adminGetAllTickets = async (req, res) => {
+//   try {
+//     const tickets = await Ticket.findAll({
+//       include: [
+//         {
+//           model: TicketReply,
+//           as: 'replies',
+//           include: [
+//             { 
+//               model: User, 
+//               as: 'sender', 
+//               attributes: ['user_id', 'username'] 
+//             },
+//             { 
+//               model: Document, 
+//               as: 'documents', 
+//               attributes: ['document_id', 'doc_name', 'doc_base64', 'mime_type', 'created_on'] 
+//             }
+//           ]
+//         },
+//         { 
+//           model: User, 
+//           as: 'creator', 
+//           attributes: ['user_id', 'username', 'email'] 
+//         },
+//         { 
+//           model: Client, 
+//           as: 'client', 
+//           attributes: ['client_id', 'company_name', 'contact_person', 'email'] 
+//         },
+//         { 
+//           model: Document, 
+//           as: 'documents', 
+//           attributes: ['document_id', 'doc_name', 'doc_base64', 'mime_type', 'created_on'] 
+//         },
+//         { 
+//           model: SLA, 
+//           as: 'sla' 
+//         },
+//         { 
+//           model: ClientSLA, 
+//           as: 'client_sla' 
+//         }
+//       ],
+//       order: [
+//         ['created_at', 'DESC']
+//       ]
+//     });
+
+//     // Process tickets and handle client senders separately
+//     const ticketsWithSLA = await Promise.all(
+//       tickets.map(async (t) => {
+//         const plain = t.toJSON ? t.toJSON() : t;
+        
+//         // Process replies to handle client senders
+//         if (Array.isArray(plain.replies)) {
+//           for (let reply of plain.replies) {
+//             // If sender_type is 'client' and we don't have a sender, try to get the client
+//             if (reply.sender_type === 'client' && !reply.sender) {
+//               const client = await Client.findByPk(reply.sender_id, {
+//                 attributes: ['client_id', 'company_name', 'email']
+//               });
+//               if (client) {
+//                 reply.sender = {
+//                   user_id: client.client_id,
+//                   username: client.company_name,
+//                   email: client.email,
+//                   is_client: true
+//                 };
+//               }
+//             }
+//           }
+          
+//           // Sort replies by created_at
+//           plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+//         }
+        
+//         // Compute SLA compliance
+//         const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
+//         plain.sla = sla;
+//         plain.response_sla_met = response_sla_met;
+//         plain.resolve_sla_met = resolve_sla_met;
+        
+//         // Ensure is_other_issue is included
+//         plain.is_other_issue = plain.is_other_issue ?? false;
+        
+//         return plain;
+//       })
+//     );
+
+//     return res.json({ tickets: ticketsWithSLA });
+//   } catch (err) {
+//     console.error('adminGetAllTickets', err);
+//     return res.status(500).json({ message: 'Internal server error' });
 //   }
-//   return false;
 // };
 
 
 
-
-/* --------------------------
-   READ endpoints
----------------------------*/
-
-
-
-
-
-exports.replyToTicket = async (req, res) => {
-  const t = await sequelize.transaction();
+exports.adminGetAllTickets = async (req, res) => {
   try {
-    const { ticketId } = req.params;
-    // ADD priority to the destructured fields
-    const { 
-      message: rawMessage, 
-      status: requestedStatus, 
-      screenshot_url, 
-      assigned_to,
-      priority: requestedPriority // ADD THIS
-    } = req.body;
-    
-    const files = req.files && Array.isArray(req.files) ? req.files : [];
-
-    // Update validation to include priority
-    const isAdminSender = req.user && req.user.role_name === 'admin';
-    const hasAssignAction = (assigned_to !== undefined && assigned_to !== null && String(assigned_to).trim() !== '');
-    const hasPriorityAction = (requestedPriority !== undefined && requestedPriority !== null && String(requestedPriority).trim() !== '');
-
-    if (
-      (!rawMessage || String(rawMessage).trim() === '') &&
-      files.length === 0 &&
-      !requestedStatus &&
-      !screenshot_url &&
-      !(isAdminSender && hasAssignAction) &&
-      !(isAdminSender && hasPriorityAction) // ADD THIS
-    ) {
-      await t.rollback();
-      return res.status(400).json({ 
-        message: 'At least one of message / files / status / screenshot_url / assigned_to (admin) / priority (admin) is required' 
-      });
-    }
-
-    const ticket = await Ticket.findByPk(ticketId, { transaction: t });
-    if (!ticket) {
-      await t.rollback();
-      return res.status(404).json({ message: 'Ticket not found' });
-    }
-
-    // permission check: owner, admin, or assigned executive (via helper)
-    if (!(await ensureCanReply(req, ticket))) {
-      await t.rollback();
-      return res.status(403).json({ message: 'Forbidden' });
-    }
-
-    const sender_type = (req.user && req.user.role_name === 'admin') ? 'admin' : (req.user && req.user.role_name === 'executive' ? 'admin' : 'user');
-    const senderId = req.user && (req.user.id ?? req.user.user_id);
-
-    // Only these statuses are allowed
-    const allowedStatuses = ['Open', 'Pending', 'Resolved', 'Closed'];
-    let statusChanged = false;
-    let newStatus = undefined;
-    if (requestedStatus) {
-      newStatus = String(requestedStatus).trim();
-      if (!allowedStatuses.includes(newStatus)) {
-        await t.rollback();
-        return res.status(400).json({ message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
-      }
-      if (ticket.status !== newStatus) statusChanged = true;
-    }
-
-    // ADD PRIORITY UPDATE LOGIC
-    let priorityChanged = false;
-    let newPriority = undefined;
-    if (isAdminSender && hasPriorityAction) {
-      newPriority = String(requestedPriority).trim();
-      
-      // Validate priority - you might want to fetch available priorities from DB
-      const validPriorities = ['low', 'medium', 'high', 'critical', 'urgent']; // Adjust based on your priorities
-      if (!validPriorities.includes(newPriority)) {
-        await t.rollback();
-        return res.status(400).json({ message: `Invalid priority. Allowed: ${validPriorities.join(', ')}` });
-      }
-      
-      if (ticket.priority !== newPriority) priorityChanged = true;
-    }
-
-    const now = new Date();
-
-    // If admin replies for the first time -> set response_at & response_time_seconds
-    if (req.user && req.user.role_name === 'admin' && !ticket.response_at) {
-      ticket.response_at = now;
-      ticket.response_time_seconds = secondsBetween(ticket.created_at, now);
-      ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
-    }
-
-    // If admin provided assigned_to, handle assignment (only admin allowed)
-    if (isAdminSender && hasAssignAction) {
-      const assignedId = parseInt(assigned_to, 10);
-      if (Number.isNaN(assignedId)) {
-        await t.rollback();
-        return res.status(400).json({ message: 'Invalid assigned_to value' });
-      }
-      const execUser = await User.findByPk(assignedId, { transaction: t });
-      if (!execUser) {
-        await t.rollback();
-        return res.status(400).json({ message: 'Assignee user not found' });
-      }
-      if (execUser.role_name !== 'executive') {
-        await t.rollback();
-        return res.status(400).json({ message: 'Assignee must be an executive' });
-      }
-
-      ticket.assigned_to = assignedId;
-      ticket.last_updated_by = req.user.username ?? String(senderId);
-      ticket.updated_at = now;
-    }
-
-    // APPLY PRIORITY CHANGE (admin only)
-    if (priorityChanged && newPriority) {
-      ticket.priority = newPriority;
-      ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
-      ticket.updated_at = now;
-    }
-
-    // Apply status change
-    if (statusChanged && newStatus) {
-      ticket.prev_status = ticket.status;
-      ticket.status = newStatus;
-      ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
-      ticket.updated_at = now;
-
-      if ((newStatus === 'Resolved' || newStatus === 'Closed') && !ticket.resolved_at) {
-        ticket.resolved_at = now;
-        ticket.resolve_time_seconds = secondsBetween(ticket.created_at, now);
-      }
-    } else {
-      // Update last_updated_by and updated_at even if only priority changed
-      if (req.user && req.user.role_name === 'admin') {
-        ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
-      }
-      ticket.updated_at = now;
-    }
-
-    // persist ticket changes
-    await ticket.save({ transaction: t });
-
-    // Create reply only if message present
-    let reply = null;
-    if (rawMessage && String(rawMessage).trim() !== '') {
-      reply = await TicketReply.create({
-        ticket_id: ticket.ticket_id ?? ticket.id,
-        sender_id: senderId,
-        sender_type: (req.user && req.user.role_name === 'admin') ? 'admin' : 'user',
-        message: rawMessage ?? ''
-      }, { transaction: t });
-    }
-
-    // helper to create Document entries from files or base64 (reply-level docs)
-    const createdDocsMeta = [];
-
-    // Save multi-file uploads (req.files) => store base64 in doc_base64
-    if (files.length > 0) {
-      // ensure we have a reply to attach to; if assignment only and no reply created earlier, create a lightweight reply to attach files.
-      let replyToAttach = reply;
-      if (!replyToAttach) {
-        // create a system/user reply to host attachments
-        replyToAttach = await TicketReply.create({
-          ticket_id: ticket.ticket_id ?? ticket.id,
-          sender_id: senderId,
-          sender_type: (req.user && req.user.role_name === 'admin') ? 'admin' : 'user',
-          message: ''
-        }, { transaction: t });
-      }
-
-      const docsToCreate = files.map((file) => {
-        const b64 = file.buffer ? file.buffer.toString('base64') : null;
-        const mime = file.mimetype || 'application/octet-stream';
-        const isImage = mime.startsWith('image/');
-        return {
-          linked_id: replyToAttach.reply_id,
-          table_name: 'ticket_reply',
-          type: isImage ? 'image' : 'attachment',
-          doc_name: file.originalname || file.filename || 'upload',
-          mime_type: mime,
-          doc_base64: b64,
-          created_by: req.user.username ?? String(senderId),
-          status: 'active'
-        };
-      });
-      const created = await Document.bulkCreate(docsToCreate, { transaction: t });
-      created.forEach((d) => {
-        createdDocsMeta.push({
-          document_id: d.document_id ?? d.id ?? null,
-          doc_name: d.doc_name,
-          mime_type: d.mime_type,
-          created_on: d.created_on
-        });
-      });
-    } else if (screenshot_url) {
-      // screenshot_url as base64 data URI: data:<mimetype>;base64,<data>
-      const dataUrl = String(screenshot_url);
-      const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
-      if (m) {
-        const mimetype = m[1];
-        const b64 = m[2];
-        // ensure we have reply to attach to
-        let replyToAttach = reply;
-        if (!replyToAttach) {
-          replyToAttach = await TicketReply.create({
-            ticket_id: ticket.ticket_id ?? ticket.id,
-            sender_id: senderId,
-            sender_type: (req.user && req.user.role_name === 'admin') ? 'admin' : 'user',
-            message: ''
-          }, { transaction: t });
-        }
-
-        const doc = await Document.create({
-          linked_id: replyToAttach.reply_id,
-          table_name: 'ticket_reply',
-          type: mimetype.startsWith('image/') ? 'image' : 'attachment',
-          doc_name: req.body.screenshot_name ?? `upload.${(mimetype.split('/')[1] || 'bin')}`,
-          mime_type: mimetype,
-          doc_base64: b64,
-          created_by: req.user.username ?? String(senderId),
-          status: 'active'
-        }, { transaction: t });
-
-        createdDocsMeta.push({
-          document_id: doc.document_id ?? doc.id ?? null,
-          doc_name: doc.doc_name,
-          mime_type: doc.mime_type,
-          created_on: doc.created_on
-        });
-      }
-    }
-
-    // commit
-    await t.commit();
-
-    // Notifications (fire-and-forget)
-    (async () => {
-      try {
-        const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
-        const replyPlain = reply ? (reply.toJSON ? reply.toJSON() : reply) : null;
-        const sender = { username: req.user.username, email: req.user.email };
-
-        if ((req.user && req.user.role_name === 'admin') || (req.user && req.user.role_name === 'executive')) {
-          // notify owner
-          const owner = await User.findByPk(ticket.user_id, { attributes: ['email', 'username'] });
-          if (owner && owner.email) {
-            try {
-              const { subject, html, text } = ticketReplyTemplate({ ticket: ticketPlain, reply: replyPlain, sender });
-              await sendMail({ to: owner.email, subject, html, text });
-            } catch (mailErr) {
-              console.error('Mail error (reply -> owner):', mailErr && mailErr.message ? mailErr.message : mailErr);
+    const tickets = await Ticket.findAll({
+      include: [
+        {
+          model: TicketReply,
+          as: 'replies',
+          include: [
+            { 
+              model: User, 
+              as: 'sender', 
+              attributes: ['user_id', 'username', 'email'] 
+            },
+            { 
+              model: Document, 
+              as: 'documents', 
+              attributes: ['document_id', 'doc_name', 'doc_base64', 'mime_type', 'created_on'] 
             }
+          ]
+        },
+        { 
+          model: User, 
+          as: 'creator', 
+          attributes: ['user_id', 'username', 'email'] 
+        },
+        { 
+          model: Client, 
+          as: 'client', 
+          attributes: ['client_id', 'company_name', 'contact_person', 'email'] 
+        },
+        { 
+          model: Document, 
+          as: 'documents', 
+          attributes: ['document_id', 'doc_name', 'doc_base64', 'mime_type', 'created_on'] 
+        },
+        { 
+          model: SLA, 
+          as: 'sla' 
+        },
+        { 
+          model: ClientSLA, 
+          as: 'client_sla' 
+        }
+      ],
+      order: [
+        ['created_at', 'DESC']
+      ]
+    });
 
-            // Notify about status change
-            if (statusChanged) {
-              try {
-                const { subject, html, text } = ticketStatusChangedTemplate({
-                  ticket: ticketPlain,
-                  oldStatus: ticket.prev_status,
-                  newStatus: ticket.status,
-                  admin: sender
-                });
-                await sendMail({ to: owner.email, subject, html, text });
-              } catch (mailErr2) {
-                console.error('Mail error (status change -> owner):', mailErr2 && mailErr2.message ? mailErr2.message : mailErr2);
+    // Process tickets and handle client senders separately
+    const ticketsWithSLA = await Promise.all(
+      tickets.map(async (t) => {
+        const plain = t.toJSON ? t.toJSON() : t;
+        
+        // Process replies to handle client senders
+        if (Array.isArray(plain.replies)) {
+          for (let reply of plain.replies) {
+            // If sender_type is 'client', we need to replace the user sender with client data
+            if (reply.sender_type === 'client') {
+              const client = await Client.findByPk(reply.sender_id, {
+                attributes: ['client_id', 'company_name', 'email']
+              });
+              if (client) {
+                // Replace the user sender with client data
+                reply.sender = {
+                  user_id: client.client_id, // For compatibility
+                  username: client.company_name,
+                  email: client.email,
+                  is_client: true
+                };
+              } else {
+                // If client not found, clear the sender
+                reply.sender = null;
               }
             }
+            // For user/admin/system replies, the sender is already populated with user data
+          }
+          
+          // Sort replies by created_at
+          plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        }
+        
+        // Compute SLA compliance
+        const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
+        plain.sla = sla;
+        plain.response_sla_met = response_sla_met;
+        plain.resolve_sla_met = resolve_sla_met;
+        
+        // Ensure is_other_issue is included
+        plain.is_other_issue = plain.is_other_issue ?? false;
+        
+        return plain;
+      })
+    );
 
-            // ADD: Notify about priority change (you'll need to create this template)
-            if (priorityChanged) {
-              try {
-                const { subject, html, text } = ticketPriorityChangedTemplate({
-                  ticket: ticketPlain,
-                  oldPriority: ticket.priority, // Note: you might want to store previous priority
-                  newPriority: newPriority,
-                  admin: sender
-                });
-                await sendMail({ to: owner.email, subject, html, text });
-              } catch (mailErr3) {
-                console.error('Mail error (priority change -> owner):', mailErr3 && mailErr3.message ? mailErr3.message : mailErr3);
+    return res.json({ tickets: ticketsWithSLA });
+  } catch (err) {
+    console.error('adminGetAllTickets Error', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Get user's tickets
+exports.getUserTickets = async (req, res) => {
+  try {
+    const uid = req.user.id ?? req.user.user_id;
+    const tickets = await Ticket.findAll({
+      where: { user_id: uid },
+      include: [
+        { model: User, as: 'creator', attributes: ['user_id', 'username', 'email', 'first_name', 'last_name'] },
+        {
+          model: TicketReply,
+          as: 'replies',
+          include: [
+            { model: User, as: 'sender', attributes: ['user_id', 'username', 'email'] },
+            { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'mime_type', 'doc_base64', 'created_on'] }
+          ],
+        },
+        { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'mime_type', 'doc_base64', 'created_on'] },
+        { model: SLA, as: 'sla' }
+      ],
+      order: [
+        [{ model: TicketReply, as: 'replies' }, 'created_at', 'ASC'],
+        ['created_at', 'DESC']
+      ]
+    });
+
+    const ticketsWithSLA = await Promise.all(
+      tickets.map(async (t) => {
+        const plain = t.toJSON ? t.toJSON() : t;
+        
+        // Process replies to handle client senders (if any)
+        if (Array.isArray(plain.replies)) {
+          for (let reply of plain.replies) {
+            // If sender_type is 'client', replace with client data
+            if (reply.sender_type === 'client') {
+              const client = await Client.findByPk(reply.sender_id, {
+                attributes: ['client_id', 'company_name', 'email']
+              });
+              if (client) {
+                reply.sender = {
+                  user_id: client.client_id,
+                  username: client.company_name,
+                  email: client.email,
+                  is_client: true
+                };
+              } else {
+                reply.sender = null;
               }
             }
           }
-        } else {
-          // user replied -> notify admins
-          const admins = await User.findAll({ where: { role_name: 'admin', is_active: true }, attributes: ['email', 'username'] });
-          const adminEmails = admins.map(a => a.email).filter(e => e && e !== req.user.email);
-          if (adminEmails.length > 0) {
-            try {
-              const { subject, html, text } = ticketReplyTemplate({ ticket: ticketPlain, reply: replyPlain, sender });
-              await sendMail({ to: adminEmails.join(','), subject, html, text });
-            } catch (mailErr) {
-              console.error('Mail error (reply -> admins):', mailErr && mailErr.message ? mailErr.message : mailErr);
+          
+          plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        }
+        
+        const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
+        plain.sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.sla ?? null;
+        plain.response_sla_met = response_sla_met;
+        plain.resolve_sla_met = resolve_sla_met;
+        return plain;
+      })
+    );
+
+    return res.json({ tickets: ticketsWithSLA });
+  } catch (err) {
+    console.error('getUserTickets Error', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+// Get executive's assigned tickets
+exports.execGetAssignedTickets = async (req, res) => {
+  try {
+    const uid = req.user.id ?? req.user.user_id;
+    if (!req.user || req.user.role_name !== 'executive') return res.status(403).json({ message: 'Forbidden' });
+
+    const tickets = await Ticket.findAll({
+      where: { assigned_to: uid },
+      include: [
+        { 
+          model: TicketReply, 
+          as: 'replies', 
+          include: [
+            { model: User, as: 'sender', attributes: ['user_id', 'username', 'email'] }, 
+            { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'mime_type', 'doc_base64', 'created_on'] }
+          ] 
+        },
+        { 
+          model: User, 
+          as: 'creator', 
+          attributes: ['user_id','username','email'] 
+        },
+        { 
+          model: Client, 
+          as: 'client', 
+          attributes: ['client_id', 'company_name', 'contact_person', 'email'] 
+        },
+        { 
+          model: Document, 
+          as: 'documents',
+          attributes: ['document_id', 'doc_name', 'mime_type', 'doc_base64', 'created_on']
+        },
+        { 
+          model: SLA, 
+          as: 'sla' 
+        },
+        { 
+          model: ClientSLA, 
+          as: 'client_sla' 
+        }
+      ],
+      order: [
+        [{ model: TicketReply, as: 'replies'}, 'created_at', 'ASC'],
+        ['created_at','DESC']
+      ]
+    });
+
+    const resp = await Promise.all(
+      tickets.map(async (t) => {
+        const plain = t.toJSON ? t.toJSON() : t;
+        
+        // Process replies to handle client senders
+        if (Array.isArray(plain.replies)) {
+          for (let reply of plain.replies) {
+            if (reply.sender_type === 'client') {
+              const client = await Client.findByPk(reply.sender_id, {
+                attributes: ['client_id', 'company_name', 'email']
+              });
+              if (client) {
+                reply.sender = {
+                  user_id: client.client_id,
+                  username: client.company_name,
+                  email: client.email,
+                  is_client: true
+                };
+              } else {
+                reply.sender = null;
+              }
             }
           }
+          
+          plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
         }
-      } catch (outerMailErr) {
-        console.error('Mail pipeline error:', outerMailErr && outerMailErr.message ? outerMailErr.message : outerMailErr);
-      }
-    })();
+        
+        const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
+        plain.sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.sla ?? null;
+        plain.response_sla_met = response_sla_met;
+        plain.resolve_sla_met = resolve_sla_met;
+        plain.is_other_issue = plain.is_other_issue ?? false;
+        return plain;
+      })
+    );
 
-    // fetch reply with sender for response
-    const replyWithSender = reply
-      ? await TicketReply.findByPk(reply.reply_id, {
-          include: [{ model: User, as: 'sender', attributes: ['user_id', 'username', 'email'] }]
-        })
-      : null;
+    return res.json({ tickets: resp });
+  } catch (err) {
+    console.error('execGetAssignedTickets', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
 
-    // prepare response
-    const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+// Get single ticket by ID
+// exports.getTicketById = async (req, res) => {
+//   try {
+//     const { ticketId } = req.params;
     
-    // fetch ticket-level documents if any
-    const ticketDocs = await Document.findAll({
-      where: { linked_id: ticket.ticket_id, table_name: 'ticket' },
-      attributes: ['document_id', 'doc_name', 'mime_type', 'created_on']
-    });
+//     // Build include based on who is requesting
+//     const include = [
+//       {
+//         model: TicketReply,
+//         as: 'replies',
+//         include: [
+//           { model: User, as: 'sender', attributes: ['user_id', 'username', 'email'] },
+//           { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'mime_type', 'doc_base64', 'created_on'] }
+//         ],
+//       },
+//       { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'doc_base64', 'mime_type', 'created_on'] }
+//     ];
 
-    // attach assignee object if assigned
-    let assigneeObj = null;
-    if (ticketPlain.assigned_to) {
-      const assigneeUser = await User.findByPk(ticketPlain.assigned_to);
-      if (assigneeUser) {
-        assigneeObj = {
-          user_id: assigneeUser.user_id,
-          username: assigneeUser.username,
-          email: assigneeUser.email
-        };
-      }
-    }
+//     // Add creator based on ticket type
+//     include.push({ model: User, as: 'creator', attributes: ['user_id', 'username', 'email', 'first_name', 'last_name'] });
+//     include.push({ model: Client, as: 'client', attributes: ['client_id', 'company_name', 'contact_person', 'email'] });
+    
+//     // Add SLA based on ticket type
+//     include.push({ model: SLA, as: 'sla' });
+//     include.push({ model: ClientSLA, as: 'client_sla' });
 
-    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(ticketPlain);
+//     const ticket = await Ticket.findByPk(ticketId, {
+//       include,
+//       order: [
+//         [{ model: TicketReply, as: 'replies' }, 'created_at', 'ASC']
+//       ]
+//     });
 
-    return res.status(201).json({
-      message: 'Reply added',
-      reply: replyWithSender,
-      documents: createdDocsMeta,
-      ticket: {
-        ...ticketPlain,
-        ticket_documents: ticketDocs.map(d => (d.toJSON ? d.toJSON() : d)),
-        assignee: assigneeObj,
-        sla,
-        response_sla_met,
-        resolve_sla_met
-      }
-    });
-  } catch (err) {
-    console.error('replyToTicket', err);
-    try { await t.rollback(); } catch (e) { /* ignore */ }
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
+//     if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+//     if (!(await ensureOwnerOrAdmin(req, ticket))) return res.status(403).json({ message: 'Forbidden' });
+
+//     const plain = ticket.toJSON ? ticket.toJSON() : ticket;
+
+//     // JS fallback sort to guarantee order
+//     if (Array.isArray(plain.replies)) {
+//       plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+//     }
+
+//     const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
+//     plain.sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.sla ?? null;
+//     plain.response_sla_met = response_sla_met;
+//     plain.resolve_sla_met = resolve_sla_met;
+    
+//     // Set creator username based on whether it's user or client
+//     if (plain.user_id) {
+//       plain.created_by_username = plain.creator?.username || 'Unknown';
+//     } else if (plain.client_id) {
+//       plain.created_by_username = plain.client?.company_name || 'Unknown Client';
+//     }
+
+//     return res.json({ ticket: plain });
+//   } catch (err) {
+//     console.error('getTicketById', err);
+//     return res.status(500).json({ message: 'Internal server error' });
+//   }
+// };
 
 
-exports.adminRequestClose = async (req, res) => {
+exports.getTicketById = async (req, res) => {
   try {
     const { ticketId } = req.params;
-    const ticket = await Ticket.findByPk(ticketId);
+
+    const ticket = await Ticket.findByPk(ticketId, {
+      include: [
+        {
+          model: TicketReply,
+          as: 'replies',
+          include: [
+            { model: User, as: 'sender', attributes: ['user_id', 'username', 'email'] },
+            { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'mime_type', 'doc_base64', 'created_on'] }
+          ],
+        },
+        
+        { model: User, as: 'creator', attributes: ['user_id', 'username', 'email', 'first_name', 'last_name'] },
+        { model: Client, as: 'client', attributes: ['client_id', 'company_name', 'contact_person', 'email'] },
+        { model: SLA, as: 'sla' },
+        { model: ClientSLA, as: 'client_sla' },
+        { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'doc_base64', 'mime_type', 'created_on'] }
+      ],
+      order: [
+        [{ model: TicketReply, as: 'replies' }, 'created_at', 'ASC']
+      ]
+    });
+
     if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+    if (!(await ensureOwnerOrAdmin(req, ticket))) return res.status(403).json({ message: 'Forbidden' });
 
-    if (ticket.status === 'Closed' || ticket.status === 'Pending') {
-      return res.status(400).json({ message: 'Ticket already closed or pending' });
-    }
+    const plain = ticket.toJSON ? ticket.toJSON() : ticket;
 
-    ticket.prev_status = ticket.status;
-    ticket.status = 'Pending';
-    ticket.updated_at = new Date();
-    ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
-    await ticket.save();
-
-    await TicketReply.create({
-      ticket_id: ticket.ticket_id,
-      sender_id: req.user.id ?? req.user.user_id,
-      sender_type: 'admin',
-      message: 'Admin has requested to close this ticket. Please approve or decline.'
-    });
-
-    // notify owner
-    (async () => {
-      try {
-        const owner = await User.findByPk(ticket.user_id, { attributes: ['email', 'username'] });
-        const admin = { username: req.user.username, email: req.user.email };
-        if (owner && owner.email) {
-          const { subject, html, text } = ticketStatusChangedTemplate({ ticket: ticket.toJSON ? ticket.toJSON() : ticket, oldStatus: ticket.prev_status, newStatus: ticket.status, admin });
-          await sendMail({ to: owner.email, subject, html, text });
+    // Process replies to handle client senders
+    if (Array.isArray(plain.replies)) {
+      for (let reply of plain.replies) {
+        // If sender_type is 'client', replace with client data
+        if (reply.sender_type === 'client') {
+          const client = await Client.findByPk(reply.sender_id, {
+            attributes: ['client_id', 'company_name', 'email']
+          });
+          if (client) {
+            reply.sender = {
+              user_id: client.client_id,
+              username: client.company_name,
+              email: client.email,
+              is_client: true
+            };
+          } else {
+            reply.sender = null;
+          }
         }
-      } catch (e) {
-        console.error('Mail error (adminRequestClose):', e && e.message ? e.message : e);
       }
-    })();
-
-    const plain = ticket.toJSON ? ticket.toJSON() : ticket;
-    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
-
-    return res.json({ message: 'Ticket marked Pending', ticket: { ...plain, sla, response_sla_met, resolve_sla_met } });
-  } catch (err) {
-    console.error('adminRequestClose', err);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
-
-exports.adminUpdateStatus = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const { ticketId } = req.params;
-    const { status } = req.body;
-    const allowed = ['Open', 'Pending', 'Resolved', 'Closed'];
-    if (!allowed.includes(status)) {
-      await t.rollback();
-      return res.status(400).json({ message: 'Invalid status' });
+      
+      // JS fallback sort to guarantee order
+      plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     }
 
-    const ticket = await Ticket.findByPk(ticketId, { transaction: t });
-    if (!ticket) {
-      await t.rollback();
-      return res.status(404).json({ message: 'Ticket not found' });
+    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
+    plain.sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.sla ?? null;
+    plain.response_sla_met = response_sla_met;
+    plain.resolve_sla_met = resolve_sla_met;
+    
+    // Set creator username based on whether it's user or client
+    if (plain.user_id) {
+      plain.created_by_username = plain.creator?.username || 'Unknown';
+    } else if (plain.client_id) {
+      plain.created_by_username = plain.client?.company_name || 'Unknown Client';
     }
 
-    const oldStatus = ticket.status;
-    ticket.prev_status = ticket.status;
-    ticket.status = status;
-    ticket.updated_at = new Date();
-    ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
-
-    if ((status === 'Resolved' || status === 'Closed') && !ticket.resolved_at) {
-      const now = new Date();
-      ticket.resolved_at = now;
-      ticket.resolve_time_seconds = secondsBetween(ticket.created_at, now);
-    }
-
-    await ticket.save({ transaction: t });
-
-    await TicketReply.create({
-      ticket_id: ticket.ticket_id,
-      sender_id: req.user.id ?? req.user.user_id,
-      sender_type: 'admin',
-      message: `Admin updated status to ${status}`
-    }, { transaction: t });
-
-    await t.commit();
-
-    // notify owner
-    (async () => {
-      try {
-        const owner = await User.findByPk(ticket.user_id, { attributes: ['email', 'username'] });
-        const admin = { username: req.user.username, email: req.user.email };
-        if (owner && owner.email) {
-          const { subject, html, text } = ticketStatusChangedTemplate({ ticket: ticket.toJSON ? ticket.toJSON() : ticket, oldStatus, newStatus: status, admin });
-          await sendMail({ to: owner.email, subject, html, text });
-        }
-      } catch (e) {
-        console.error('Mail error (adminUpdateStatus):', e && e.message ? e.message : e);
-      }
-    })();
-
-    const plain = ticket.toJSON ? ticket.toJSON() : ticket;
-    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
-
-    return res.json({ message: 'Status updated', ticket: { ...plain, sla, response_sla_met, resolve_sla_met } });
+    return res.json({ ticket: plain });
   } catch (err) {
-    console.error('adminUpdateStatus', err);
-    await t.rollback();
+    console.error('getTicketById', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
-/* --------------------------
-   User actions that affect resolve time
----------------------------*/
-
-exports.userApproveClosure = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const { ticketId } = req.params;
-    const ticket = await Ticket.findByPk(ticketId, { transaction: t });
-    if (!ticket) { await t.rollback(); return res.status(404).json({ message: 'Ticket not found' }); }
-    const uid = req.user.id ?? req.user.user_id;
-    if (ticket.user_id !== uid) { await t.rollback(); return res.status(403).json({ message: 'Only owner can approve' }); }
-    if (ticket.status !== 'Pending') { await t.rollback(); return res.status(400).json({ message: 'Ticket not pending' }); }
-
-    ticket.prev_status = ticket.status;
-    ticket.status = 'Closed';
-    ticket.updated_at = new Date();
-
-    if (!ticket.resolved_at) {
-      const now = new Date();
-      ticket.resolved_at = now;
-      ticket.resolve_time_seconds = secondsBetween(ticket.created_at, now);
-    }
-
-    await ticket.save({ transaction: t });
-
-    await TicketReply.create({
-      ticket_id: ticket.ticket_id,
-      sender_id: uid,
-      sender_type: 'user',
-      message: 'User approved closure.'
-    }, { transaction: t });
-
-    await t.commit();
-
-    // notify admins optionally
-    (async () => {
-      try {
-        const admins = await User.findAll({ where: { role_name: 'admin', is_active: true }, attributes: ['email', 'username'] });
-        const adminEmails = admins.map(a => a.email).filter(Boolean);
-        if (adminEmails.length > 0) {
-          const adminActor = { username: req.user.username, email: req.user.email };
-          const { subject, html, text } = ticketStatusChangedTemplate({ ticket: ticket.toJSON ? ticket.toJSON() : ticket, oldStatus: ticket.prev_status, newStatus: ticket.status, admin: adminActor });
-          await sendMail({ to: adminEmails.join(','), subject, html, text });
-        }
-      } catch (e) {
-        console.error('Mail error (userApproveClosure):', e && e.message ? e.message : e);
-      }
-    })();
-
-    const plain = ticket.toJSON ? ticket.toJSON() : ticket;
-    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
-
-    return res.json({ message: 'Ticket closed', ticket: { ...plain, sla, response_sla_met, resolve_sla_met } });
-  } catch (err) {
-    console.error('userApproveClosure', err);
-    await t.rollback();
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
-
-exports.userDeclineClosure = async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const ticket = await Ticket.findByPk(ticketId);
-    if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
-    const uid = req.user.id ?? req.user.user_id;
-    if (ticket.user_id !== uid) return res.status(403).json({ message: 'Only owner can decline' });
-    if (ticket.status !== 'Pending') return res.status(400).json({ message: 'Ticket not pending' });
-
-    const previous = ticket.prev_status || 'Open';
-    ticket.status = previous;
-    ticket.prev_status = null;
-    ticket.updated_at = new Date();
-    await ticket.save();
-
-    await TicketReply.create({
-      ticket_id: ticket.ticket_id,
-      sender_id: uid,
-      sender_type: 'user',
-      message: 'User declined closure. Reopened for work.'
-    });
-
-    const plain = ticket.toJSON ? ticket.toJSON() : ticket;
-    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
-
-    return res.json({ message: 'Ticket reverted to previous status', ticket: { ...plain, sla, response_sla_met, resolve_sla_met } });
-  } catch (err) {
-    console.error('userDeclineClosure', err);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
-
-exports.userReopenTicket = async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const ticket = await Ticket.findByPk(ticketId);
-    if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
-    const uid = req.user.id ?? req.user.user_id;
-    if (ticket.user_id !== uid) return res.status(403).json({ message: 'Only owner can reopen' });
-    if (ticket.status !== 'Closed') return res.status(400).json({ message: 'Only closed tickets can be reopened' });
-
-    ticket.prev_status = ticket.status;
-    ticket.status = 'Pending';
-    ticket.updated_at = new Date();
-    await ticket.save();
-
-    await TicketReply.create({
-      ticket_id: ticket.ticket_id,
-      sender_id: uid,
-      sender_type: 'user',
-      message: 'User reopened the ticket.'
-    });
-
-    const plain = ticket.toJSON ? ticket.toJSON() : ticket;
-    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
-
-    return res.json({ message: 'Ticket reopened', ticket: { ...plain, sla, response_sla_met, resolve_sla_met } });
-  } catch (err) {
-    console.error('userReopenTicket', err);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
-
-/* --------------------------
-   Create ticket
----------------------------*/
-
-
-
-
-
-
-
+// User raises ticket
 exports.raiseTicket = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -763,16 +641,16 @@ exports.raiseTicket = async (req, res) => {
     const moduleVal = req.body.category;
     const sub_module = req.body.subCategory;
 
-    // NEW: Store whether this is an "Other" issue type
+    // Store whether this is an "Other" issue type
     const isOtherIssueType = req.body.issueType === 'Other';
     
     // Handle issue type - if it's "Other", use issueName, otherwise use issueType
     let category = req.body.issueType;
-    let issue_name = null; // NEW: Store custom issue name separately
+    let issue_name = null;
     
     if (isOtherIssueType && req.body.issueName) {
-      issue_name = req.body.issueName; // Store custom issue name
-      category = req.body.issueName; // Also store in category for display
+      issue_name = req.body.issueName;
+      category = req.body.issueName;
     }
 
     const comment = req.body.comments || req.body.comment || '';
@@ -804,20 +682,19 @@ exports.raiseTicket = async (req, res) => {
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
-    // FIXED: Use issueType_id for regular issues, not issueType name
+    // Use issueType_id for regular issues, not issueType name
     const issue_type_id = isOtherIssueType ? null : (req.body.issueType_id ? parseInt(req.body.issueType_id) : null);
 
-    // NEW: Determine SLA ID based on user_id and issue_type_id
+    // Determine SLA ID based on user_id and issue_type_id
     let slaId = null;
     
-    if (req.body.sla_id=="00") {
+    if (req.body.sla_id && req.body.sla_id !== "00") {
       // If SLA ID is explicitly provided in request, use it
       const parsed = parseInt(req.body.sla_id, 10);
       if (!Number.isNaN(parsed)) slaId = parsed;
     } else if (issue_type_id && !isOtherIssueType) {
       // For regular issue types, find SLA for this user + issue type combination
       try {
-        // Get the primary SLA (fastest response time) for this user and issue type
         const slaRec = await SLA.findOne({
           where: {
             user_id: userId,
@@ -825,8 +702,8 @@ exports.raiseTicket = async (req, res) => {
             is_active: true
           },
           order: [
-            ['response_target_minutes', 'ASC'], // Fastest response first
-            ['resolve_target_minutes', 'ASC']   // Then fastest resolve
+            ['response_target_minutes', 'ASC'],
+            ['resolve_target_minutes', 'ASC']
           ],
           transaction: t
         });
@@ -836,16 +713,11 @@ exports.raiseTicket = async (req, res) => {
           console.log(`Found SLA for user ${userId} and issue type ${issue_type_id}: SLA ID ${slaId}`);
         } else {
           console.log(`No active SLA found for user ${userId} and issue type ${issue_type_id}`);
-          // Option 1: Use default SLA ID = 1 as fallback
           slaId = 1;
           console.log(`Using default SLA ID: ${slaId}`);
-          
-          // Option 2: Leave it null and handle in SLA compliance calculation
-          // slaId = null;
         }
       } catch (slaError) {
         console.error('Error finding SLA:', slaError);
-        // Fallback to default SLA ID
         slaId = 1;
         console.log(`Error occurred, using default SLA ID: ${slaId}`);
       }
@@ -858,63 +730,24 @@ exports.raiseTicket = async (req, res) => {
       slaId = 1;
       console.log(`Using default SLA ID as fallback: ${slaId}`);
     }
-if (slaId) {
-  const slaRecord = await SLA.findByPk(slaId, {
-    include: [
-      {
-        model: WorkingHours,
-        as: 'working_hours',
-        attributes: ['working_hours_id', 'working_days', 'start_time', 'end_time', 'timezone']
-      }
-    ],
-    transaction: t
-  });
 
-  if (slaRecord && slaRecord.working_hours) {
-    const createdDate = new Date();
-    
-    // Calculate response due date
-    if (slaRecord.response_target_minutes) {
-      const responseDueDate = SLACalculator.calculateDueDate(
-        createdDate,
-        slaRecord.response_target_minutes,
-        slaRecord.working_hours
-      );
-      // You might want to store this in the ticket
-      ticket.response_due_date = responseDueDate;
-    }
-
-    // Calculate resolve due date
-    if (slaRecord.resolve_target_minutes) {
-      const resolveDueDate = SLACalculator.calculateDueDate(
-        createdDate,
-        slaRecord.resolve_target_minutes,
-        slaRecord.working_hours
-      );
-      // You might want to store this in the ticket
-      ticket.resolve_due_date = resolveDueDate;
-    }
-  }
-}
-
-
-
-
-    // Create ticket with mapped fields - INCLUDING issue_type_id and issue_name
-    const ticket = await Ticket.create({
+    // Create ticket with mapped fields
+    const ticketData = {
       user_id: userId,
       module: moduleVal,
       sub_module: sub_module,
       category: category,
-      issue_type_id: issue_type_id, // FIXED: Use the ID, not the name
-      issue_name: issue_name, // Store custom issue name for "Other" type
+      issue_type_id: issue_type_id,
+      issue_name: issue_name,
       comment: comment,
       status: 'Open',
       sla_id: slaId,
       priority: priority,
       priority_id: priority_id,
-      is_other_issue: isOtherIssueType // NEW: Flag to identify "Other" issue type
-    }, { transaction: t });
+      is_other_issue: isOtherIssueType
+    };
+
+    const ticket = await Ticket.create(ticketData, { transaction: t });
 
     // Handle file uploads
     const ticketDocsMeta = [];
@@ -967,7 +800,7 @@ if (slaId) {
       sla: slaRecord ? (slaRecord.toJSON ? slaRecord.toJSON() : slaRecord) : null,
       response_sla_met,
       resolve_sla_met,
-      is_other_issue: isOtherIssueType // Include in response
+      is_other_issue: isOtherIssueType
     };
 
     // Log SLA assignment details
@@ -1009,208 +842,961 @@ if (slaId) {
   }
 };
 
+// Reply to ticket (supports both user and client)
+// exports.replyToTicket = async (req, res) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     const { ticketId } = req.params;
+//     const { 
+//       message: rawMessage, 
+//       status: requestedStatus, 
+//       screenshot_url, 
+//       assigned_to,
+//       priority: requestedPriority
+//     } = req.body;
+    
+//     const files = req.files && Array.isArray(req.files) ? req.files : [];
 
+//     // Determine sender type and ID
+//     let sender_type = 'user';
+//     let senderId = null;
+//     let senderName = null;
 
+//     if (req.client) {
+//       sender_type = 'client';
+//       senderId = req.client.id;
+//       senderName = req.client.company_name;
+//     } else if (req.user) {
+//       sender_type = (req.user.role_name === 'admin' || req.user.role_name === 'executive') ? 'admin' : 'user';
+//       senderId = req.user.id ?? req.user.user_id;
+//       senderName = req.user.username;
+//     } else {
+//       await t.rollback();
+//       return res.status(401).json({ message: 'Unauthorized' });
+//     }
 
-exports.getDocument = async (req, res) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const doc = await Document.findByPk(id);
-    if (!doc) return res.status(404).json({ message: 'Not found' });
+//     // Update validation to include priority
+//     const isAdminSender = req.user && req.user.role_name === 'admin';
+//     const hasAssignAction = (assigned_to !== undefined && assigned_to !== null && String(assigned_to).trim() !== '');
+//     const hasPriorityAction = (requestedPriority !== undefined && requestedPriority !== null && String(requestedPriority).trim() !== '');
 
-    if (doc.doc_base64) {
-      const buffer = Buffer.from(doc.doc_base64, 'base64');
-      res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
-      res.setHeader('Content-Disposition', `attachment; filename="${doc.doc_name || 'file'}"`);
-      return res.send(buffer);
-    } else {
-      return res.status(404).json({ message: 'No binary content' });
-    }
-  } catch (err) {
-    console.error('getDocument', err);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
+//     if (
+//       (!rawMessage || String(rawMessage).trim() === '') &&
+//       files.length === 0 &&
+//       !requestedStatus &&
+//       !screenshot_url &&
+//       !(isAdminSender && hasAssignAction) &&
+//       !(isAdminSender && hasPriorityAction)
+//     ) {
+//       await t.rollback();
+//       return res.status(400).json({ 
+//         message: 'At least one of message / files / status / screenshot_url / assigned_to (admin) / priority (admin) is required' 
+//       });
+//     }
 
+//     const ticket = await Ticket.findByPk(ticketId, { transaction: t });
+//     if (!ticket) {
+//       await t.rollback();
+//       return res.status(404).json({ message: 'Ticket not found' });
+//     }
 
+//     // Permission check
+//     if (!(await ensureCanReply(req, ticket))) {
+//       await t.rollback();
+//       return res.status(403).json({ message: 'Forbidden' });
+//     }
 
-// GET /api/ticket/my-tickets
-exports.getUserTickets = async (req, res) => {
-  try {
-    const uid = req.user.id ?? req.user.user_id;
-    const tickets = await Ticket.findAll({
-      where: { user_id: uid },
-      include: [
-        { model: User, as: 'creator', attributes: ['user_id', 'username', 'email', 'first_name', 'last_name'] },
-        {
-          model: TicketReply,
-          as: 'replies',
-          include: [
-            { model: User, as: 'sender', attributes: ['user_id', 'username', 'email'] },
-            { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'mime_type', 'doc_base64', 'created_on'] }
-          ],
-        },
-        { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'mime_type', 'doc_base64', 'created_on'] }, // ticket-level docs
-        { model: SLA, as: 'sla' }
-      ],
-      // top-level order: replies ascending, tickets newest first
-      order: [
-        // order replies by created_at ASC
-        [{ model: TicketReply, as: 'replies' }, 'created_at', 'ASC'],
-        // then tickets by created_at DESC
-        ['created_at', 'DESC']
-      ]
-    });
+//     // Only these statuses are allowed
+//     const allowedStatuses = ['Open', 'Pending', 'Resolved', 'Closed'];
+//     let statusChanged = false;
+//     let newStatus = undefined;
+//     if (requestedStatus) {
+//       newStatus = String(requestedStatus).trim();
+//       if (!allowedStatuses.includes(newStatus)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
+//       }
+//       if (ticket.status !== newStatus) statusChanged = true;
+//     }
 
-    // JS-side safeguard: ensure replies sorted ascending by created_at
-    const ticketsWithSLA = await Promise.all(
-      tickets.map(async (t) => {
-        const plain = t.toJSON ? t.toJSON() : t;
-        if (Array.isArray(plain.replies)) {
-          plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-        }
-        const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
-        plain.sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.sla ?? null;
-        plain.response_sla_met = response_sla_met;
-        plain.resolve_sla_met = resolve_sla_met;
-        return plain;
-      })
-    );
+//     // Priority update logic (admin only)
+//     let priorityChanged = false;
+//     let newPriority = undefined;
+//     if (isAdminSender && hasPriorityAction) {
+//       newPriority = String(requestedPriority).trim();
+      
+//       const validPriorities = ['low', 'medium', 'high', 'critical', 'urgent'];
+//       if (!validPriorities.includes(newPriority)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: `Invalid priority. Allowed: ${validPriorities.join(', ')}` });
+//       }
+      
+//       if (ticket.priority !== newPriority) priorityChanged = true;
+//     }
 
-    return res.json({ tickets: ticketsWithSLA });
-  } catch (err) {
-    console.error('getUserTickets', err);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
+//     const now = new Date();
 
-// GET /api/ticket/:ticketId
-exports.getTicketById = async (req, res) => {
+//     // If admin replies for the first time -> set response_at & response_time_seconds
+//     if (req.user && req.user.role_name === 'admin' && !ticket.response_at) {
+//       ticket.response_at = now;
+//       ticket.response_time_seconds = secondsBetween(ticket.created_at, now);
+//       ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+//     }
+
+//     // If admin provided assigned_to, handle assignment (only admin allowed)
+//     if (isAdminSender && hasAssignAction) {
+//       const assignedId = parseInt(assigned_to, 10);
+//       if (Number.isNaN(assignedId)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: 'Invalid assigned_to value' });
+//       }
+//       const execUser = await User.findByPk(assignedId, { transaction: t });
+//       if (!execUser) {
+//         await t.rollback();
+//         return res.status(400).json({ message: 'Assignee user not found' });
+//       }
+//       if (execUser.role_name !== 'executive') {
+//         await t.rollback();
+//         return res.status(400).json({ message: 'Assignee must be an executive' });
+//       }
+
+//       ticket.assigned_to = assignedId;
+//       ticket.last_updated_by = req.user.username ?? String(senderId);
+//       ticket.updated_at = now;
+//     }
+
+//     // Apply priority change (admin only)
+//     if (priorityChanged && newPriority) {
+//       ticket.priority = newPriority;
+//       ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+//       ticket.updated_at = now;
+//     }
+
+//     // Apply status change
+//     if (statusChanged && newStatus) {
+//       ticket.prev_status = ticket.status;
+//       ticket.status = newStatus;
+//       ticket.last_updated_by = senderName ?? String(senderId);
+//       ticket.updated_at = now;
+
+//       if ((newStatus === 'Resolved' || newStatus === 'Closed') && !ticket.resolved_at) {
+//         ticket.resolved_at = now;
+//         ticket.resolve_time_seconds = secondsBetween(ticket.created_at, now);
+//       }
+//     } else {
+//       // Update last_updated_by and updated_at even if only priority changed
+//       if (req.user && req.user.role_name === 'admin') {
+//         ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+//       }
+//       ticket.updated_at = now;
+//     }
+
+//     // Persist ticket changes
+//     await ticket.save({ transaction: t });
+
+//     // Create reply only if message present
+//     let reply = null;
+//     if (rawMessage && String(rawMessage).trim() !== '') {
+//       reply = await TicketReply.create({
+//         ticket_id: ticket.ticket_id ?? ticket.id,
+//         sender_id: senderId,
+//         sender_type: sender_type,
+//         message: rawMessage ?? ''
+//       }, { transaction: t });
+//     }
+
+//     // Helper to create Document entries from files or base64
+//     const createdDocsMeta = [];
+
+//     // Save multi-file uploads
+//     if (files.length > 0) {
+//       let replyToAttach = reply;
+//       if (!replyToAttach) {
+//         replyToAttach = await TicketReply.create({
+//           ticket_id: ticket.ticket_id ?? ticket.id,
+//           sender_id: senderId,
+//           sender_type: sender_type,
+//           message: ''
+//         }, { transaction: t });
+//       }
+
+//       const docsToCreate = files.map((file) => {
+//         const b64 = file.buffer ? file.buffer.toString('base64') : null;
+//         const mime = file.mimetype || 'application/octet-stream';
+//         const isImage = mime.startsWith('image/');
+//         return {
+//           linked_id: replyToAttach.reply_id,
+//           table_name: 'ticket_reply',
+//           type: isImage ? 'image' : 'attachment',
+//           doc_name: file.originalname || file.filename || 'upload',
+//           mime_type: mime,
+//           doc_base64: b64,
+//           created_by: senderName ?? String(senderId),
+//           status: 'active'
+//         };
+//       });
+//       const created = await Document.bulkCreate(docsToCreate, { transaction: t });
+//       created.forEach((d) => {
+//         createdDocsMeta.push({
+//           document_id: d.document_id ?? d.id ?? null,
+//           doc_name: d.doc_name,
+//           mime_type: d.mime_type,
+//           created_on: d.created_on
+//         });
+//       });
+//     } else if (screenshot_url) {
+//       const dataUrl = String(screenshot_url);
+//       const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
+//       if (m) {
+//         const mimetype = m[1];
+//         const b64 = m[2];
+//         let replyToAttach = reply;
+//         if (!replyToAttach) {
+//           replyToAttach = await TicketReply.create({
+//             ticket_id: ticket.ticket_id ?? ticket.id,
+//             sender_id: senderId,
+//             sender_type: sender_type,
+//             message: ''
+//           }, { transaction: t });
+//         }
+
+//         const doc = await Document.create({
+//           linked_id: replyToAttach.reply_id,
+//           table_name: 'ticket_reply',
+//           type: mimetype.startsWith('image/') ? 'image' : 'attachment',
+//           doc_name: req.body.screenshot_name ?? `upload.${(mimetype.split('/')[1] || 'bin')}`,
+//           mime_type: mimetype,
+//           doc_base64: b64,
+//           created_by: senderName ?? String(senderId),
+//           status: 'active'
+//         }, { transaction: t });
+
+//         createdDocsMeta.push({
+//           document_id: doc.document_id ?? doc.id ?? null,
+//           doc_name: doc.doc_name,
+//           mime_type: doc.mime_type,
+//           created_on: doc.created_on
+//         });
+//       }
+//     }
+
+//     await t.commit();
+
+//     // Notifications
+//     (async () => {
+//       try {
+//         const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+//         const replyPlain = reply ? (reply.toJSON ? reply.toJSON() : reply) : null;
+//         const sender = { 
+//           username: senderName, 
+//           email: req.user ? req.user.email : req.client.email 
+//         };
+
+//         // Determine ticket owner for notifications
+//         let ownerEmail = null;
+//         let ownerUsername = null;
+
+//         if (ticket.user_id) {
+//           const owner = await User.findByPk(ticket.user_id, { attributes: ['email', 'username'] });
+//           if (owner) {
+//             ownerEmail = owner.email;
+//             ownerUsername = owner.username;
+//           }
+//         } else if (ticket.client_id) {
+//           const owner = await Client.findByPk(ticket.client_id, { attributes: ['email', 'company_name'] });
+//           if (owner) {
+//             ownerEmail = owner.email;
+//             ownerUsername = owner.company_name;
+//           }
+//         }
+
+//         if ((req.user && req.user.role_name === 'admin') || (req.user && req.user.role_name === 'executive')) {
+//           // Notify owner (user or client)
+//           if (ownerEmail) {
+//             try {
+//               const { subject, html, text } = ticketReplyTemplate({ ticket: ticketPlain, reply: replyPlain, sender });
+//               await sendMail({ to: ownerEmail, subject, html, text });
+//             } catch (mailErr) {
+//               console.error('Mail error (reply -> owner):', mailErr && mailErr.message ? mailErr.message : mailErr);
+//             }
+
+//             // Notify about status change
+//             if (statusChanged) {
+//               try {
+//                 const { subject, html, text } = ticketStatusChangedTemplate({
+//                   ticket: ticketPlain,
+//                   oldStatus: ticket.prev_status,
+//                   newStatus: ticket.status,
+//                   admin: sender
+//                 });
+//                 await sendMail({ to: ownerEmail, subject, html, text });
+//               } catch (mailErr2) {
+//                 console.error('Mail error (status change -> owner):', mailErr2 && mailErr2.message ? mailErr2.message : mailErr2);
+//               }
+//             }
+//           }
+//         } else {
+//           // User or client replied -> notify admins
+//           const admins = await User.findAll({ where: { role_name: 'admin', is_active: true }, attributes: ['email', 'username'] });
+//           const adminEmails = admins.map(a => a.email).filter(e => e && e !== (req.user ? req.user.email : req.client.email));
+//           if (adminEmails.length > 0) {
+//             try {
+//               const { subject, html, text } = ticketReplyTemplate({ ticket: ticketPlain, reply: replyPlain, sender });
+//               await sendMail({ to: adminEmails.join(','), subject, html, text });
+//             } catch (mailErr) {
+//               console.error('Mail error (reply -> admins):', mailErr && mailErr.message ? mailErr.message : mailErr);
+//             }
+//           }
+//         }
+//       } catch (outerMailErr) {
+//         console.error('Mail pipeline error:', outerMailErr && outerMailErr.message ? outerMailErr.message : outerMailErr);
+//       }
+//     })();
+
+//     // Prepare response
+//     const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+    
+//     // Fetch ticket-level documents if any
+//     const ticketDocs = await Document.findAll({
+//       where: { linked_id: ticket.ticket_id, table_name: 'ticket' },
+//       attributes: ['document_id', 'doc_name', 'mime_type', 'created_on']
+//     });
+
+//     // Attach assignee object if assigned
+//     let assigneeObj = null;
+//     if (ticketPlain.assigned_to) {
+//       const assigneeUser = await User.findByPk(ticketPlain.assigned_to);
+//       if (assigneeUser) {
+//         assigneeObj = {
+//           user_id: assigneeUser.user_id,
+//           username: assigneeUser.username,
+//           email: assigneeUser.email
+//         };
+//       }
+//     }
+
+//     const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(ticketPlain);
+
+//     return res.status(201).json({
+//       message: 'Reply added',
+//       reply: reply,
+//       documents: createdDocsMeta,
+//       ticket: {
+//         ...ticketPlain,
+//         ticket_documents: ticketDocs.map(d => (d.toJSON ? d.toJSON() : d)),
+//         assignee: assigneeObj,
+//         sla,
+//         response_sla_met,
+//         resolve_sla_met
+//       }
+//     });
+//   } catch (err) {
+//     console.error('replyToTicket', err);
+//     try { await t.rollback(); } catch (e) { /* ignore */ }
+//     return res.status(500).json({ message: 'Internal server error' });
+//   }
+// };
+
+// In controllers/ticketController.js - UPDATED replyToTicket function
+exports.replyToTicket = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
     const { ticketId } = req.params;
-    const ticket = await Ticket.findByPk(ticketId, {
-      include: [
-        {
-          model: TicketReply,
-          as: 'replies',
-          include: [
-            { model: User, as: 'sender', attributes: ['user_id', 'username', 'email'] },
-            { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'mime_type', 'doc_base64', 'created_on'] }
-          ],
-        },
-        { model: User, as: 'creator', attributes: ['user_id', 'username', 'email', 'first_name', 'last_name'] },
-        { model: SLA, as: 'sla' },
-        { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'doc_base64', 'mime_type', 'created_on'] }
-      ],
-      // order replies by created_at ascending for this single-ticket fetch
-      order: [
-        [{ model: TicketReply, as: 'replies' }, 'created_at', 'ASC']
-      ]
+    const { 
+      message: rawMessage, 
+      status: requestedStatus, 
+      screenshot_url, 
+      assigned_to,
+      priority: requestedPriority
+    } = req.body;
+    
+    const files = req.files && Array.isArray(req.files) ? req.files : [];
+
+    // ========== FIXED: PROPER AUTHENTICATION HANDLING ==========
+    let sender_type = 'user';
+    let senderId = null;
+    let senderName = null;
+    let senderEmail = null;
+
+    console.log('Authentication debug:', {
+      hasUser: !!req.user,
+      hasClient: !!req.client,
+      user: req.user ? { id: req.user.id, username: req.user.username } : null,
+      client: req.client ? { id: req.client.id, company_name: req.client.company_name } : null
     });
 
+    // Check client first, but only if it has valid data
+    if (req.client && req.client.id && req.client.company_name) {
+      sender_type = 'client';
+      senderId = req.client.id;
+      senderName = req.client.company_name;
+      senderEmail = req.client.email;
+      console.log(`Client reply - Client ID: ${senderId}, Name: ${senderName}`);
+    } 
+    // Then check user
+    else if (req.user && req.user.id && req.user.username) {
+      const role = req.user.role_name;
+      if (role === 'admin' || role === 'executive') {
+        sender_type = 'admin';
+      } else {
+        sender_type = 'user';
+      }
+      senderId = req.user.id || req.user.user_id;
+      senderName = req.user.username;
+      senderEmail = req.user.email;
+      console.log(`User reply - User ID: ${senderId}, Role: ${role}, Name: ${senderName}`);
+    } else {
+      await t.rollback();
+      return res.status(401).json({ message: 'Unauthorized - No valid authentication found' });
+    }
+
+    // Validate senderId exists
+    if (!senderId || !senderName) {
+      await t.rollback();
+      console.error('Invalid sender data:', { senderId, senderName, reqUser: req.user, reqClient: req.client });
+      return res.status(400).json({ message: 'Unable to determine sender identity' });
+    }
+    // ========== END FIX ==========
+
+    const isAdminSender = req.user && req.user.role_name === 'admin';
+    const hasAssignAction = (assigned_to !== undefined && assigned_to !== null && String(assigned_to).trim() !== '');
+    const hasPriorityAction = (requestedPriority !== undefined && requestedPriority !== null && String(requestedPriority).trim() !== '');
+
+    if (
+      (!rawMessage || String(rawMessage).trim() === '') &&
+      files.length === 0 &&
+      !requestedStatus &&
+      !screenshot_url &&
+      !(isAdminSender && hasAssignAction) &&
+      !(isAdminSender && hasPriorityAction)
+    ) {
+      await t.rollback();
+      return res.status(400).json({ 
+        message: 'At least one of message / files / status / screenshot_url / assigned_to (admin) / priority (admin) is required' 
+      });
+    }
+
+    const ticket = await Ticket.findByPk(ticketId, { transaction: t });
+    if (!ticket) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    // Permission check
+    if (!(await ensureCanReply(req, ticket))) {
+      await t.rollback();
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    // Only these statuses are allowed
+    const allowedStatuses = ['Open', 'Pending', 'Resolved', 'Closed'];
+    let statusChanged = false;
+    let newStatus = undefined;
+    if (requestedStatus) {
+      newStatus = String(requestedStatus).trim();
+      if (!allowedStatuses.includes(newStatus)) {
+        await t.rollback();
+        return res.status(400).json({ message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
+      }
+      if (ticket.status !== newStatus) statusChanged = true;
+    }
+
+    // Priority update logic (admin only)
+    let priorityChanged = false;
+    let newPriority = undefined;
+    if (isAdminSender && hasPriorityAction) {
+      newPriority = String(requestedPriority).trim();
+      
+      const validPriorities = ['low', 'medium', 'high', 'critical', 'urgent'];
+      if (!validPriorities.includes(newPriority)) {
+        await t.rollback();
+        return res.status(400).json({ message: `Invalid priority. Allowed: ${validPriorities.join(', ')}` });
+      }
+      
+      if (ticket.priority !== newPriority) priorityChanged = true;
+    }
+
+    const now = new Date();
+
+    // If admin replies for the first time -> set response_at & response_time_seconds
+    if (req.user && req.user.role_name === 'admin' && !ticket.response_at) {
+      ticket.response_at = now;
+      ticket.response_time_seconds = secondsBetween(ticket.created_at, now);
+      ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+    }
+
+    // If admin provided assigned_to, handle assignment (only admin allowed)
+    if (isAdminSender && hasAssignAction) {
+      const assignedId = parseInt(assigned_to, 10);
+      if (Number.isNaN(assignedId)) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Invalid assigned_to value' });
+      }
+      const execUser = await User.findByPk(assignedId, { transaction: t });
+      if (!execUser) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Assignee user not found' });
+      }
+      if (execUser.role_name !== 'executive') {
+        await t.rollback();
+        return res.status(400).json({ message: 'Assignee must be an executive' });
+      }
+
+      ticket.assigned_to = assignedId;
+      ticket.last_updated_by = req.user.username ?? String(senderId);
+      ticket.updated_at = now;
+    }
+
+    // Apply priority change (admin only)
+    if (priorityChanged && newPriority) {
+      ticket.priority = newPriority;
+      ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+      ticket.updated_at = now;
+    }
+
+    // Apply status change
+    if (statusChanged && newStatus) {
+      ticket.prev_status = ticket.status;
+      ticket.status = newStatus;
+      ticket.last_updated_by = senderName ?? String(senderId);
+      ticket.updated_at = now;
+
+      if ((newStatus === 'Resolved' || newStatus === 'Closed') && !ticket.resolved_at) {
+        ticket.resolved_at = now;
+        ticket.resolve_time_seconds = secondsBetween(ticket.created_at, now);
+      }
+    } else {
+      // Update last_updated_by and updated_at even if only priority changed
+      if (req.user && req.user.role_name === 'admin') {
+        ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+      }
+      ticket.updated_at = now;
+    }
+
+    // Persist ticket changes
+    await ticket.save({ transaction: t });
+
+    // ========== FIXED: CREATE REPLY WITH PROPER SENDER_ID ==========
+    let reply = null;
+    if (rawMessage && String(rawMessage).trim() !== '') {
+      reply = await TicketReply.create({
+        ticket_id: ticket.ticket_id ?? ticket.id,
+        sender_id: senderId,
+        sender_type: sender_type,
+        message: rawMessage ?? ''
+      }, { transaction: t });
+      console.log(`Created reply with sender_id: ${senderId}, sender_type: ${sender_type}`);
+    }
+
+    // Handle file uploads
+    const createdDocsMeta = [];
+    if (files.length > 0) {
+      let replyToAttach = reply;
+      if (!replyToAttach) {
+        replyToAttach = await TicketReply.create({
+          ticket_id: ticket.ticket_id ?? ticket.id,
+          sender_id: senderId,
+          sender_type: sender_type,
+          message: ''
+        }, { transaction: t });
+      }
+
+      const docsToCreate = files.map((file) => {
+        const b64 = file.buffer ? file.buffer.toString('base64') : null;
+        const mime = file.mimetype || 'application/octet-stream';
+        const isImage = mime.startsWith('image/');
+        return {
+          linked_id: replyToAttach.reply_id,
+          table_name: 'ticket_reply',
+          type: isImage ? 'image' : 'attachment',
+          doc_name: file.originalname || file.filename || 'upload',
+          mime_type: mime,
+          doc_base64: b64,
+          created_by: senderName ?? String(senderId),
+          status: 'active'
+        };
+      });
+      const created = await Document.bulkCreate(docsToCreate, { transaction: t });
+      created.forEach((d) => {
+        createdDocsMeta.push({
+          document_id: d.document_id ?? d.id ?? null,
+          doc_name: d.doc_name,
+          mime_type: d.mime_type,
+          created_on: d.created_on
+        });
+      });
+    } else if (screenshot_url) {
+      const dataUrl = String(screenshot_url);
+      const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
+      if (m) {
+        const mimetype = m[1];
+        const b64 = m[2];
+        let replyToAttach = reply;
+        if (!replyToAttach) {
+          replyToAttach = await TicketReply.create({
+            ticket_id: ticket.ticket_id ?? ticket.id,
+            sender_id: senderId,
+            sender_type: sender_type,
+            message: ''
+          }, { transaction: t });
+        }
+
+        const doc = await Document.create({
+          linked_id: replyToAttach.reply_id,
+          table_name: 'ticket_reply',
+          type: mimetype.startsWith('image/') ? 'image' : 'attachment',
+          doc_name: req.body.screenshot_name ?? `upload.${(mimetype.split('/')[1] || 'bin')}`,
+          mime_type: mimetype,
+          doc_base64: b64,
+          created_by: senderName ?? String(senderId),
+          status: 'active'
+        }, { transaction: t });
+
+        createdDocsMeta.push({
+          document_id: doc.document_id ?? doc.id ?? null,
+          doc_name: doc.doc_name,
+          mime_type: doc.mime_type,
+          created_on: doc.created_on
+        });
+      }
+    }
+
+    await t.commit();
+
+    // Notifications (simplified for now)
+    (async () => {
+      try {
+        const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+        const replyPlain = reply ? (reply.toJSON ? reply.toJSON() : reply) : null;
+        
+        // Your notification logic here...
+        
+      } catch (mailErr) {
+        console.error('Mail error:', mailErr);
+      }
+    })();
+
+    // Prepare response
+    const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+    
+    // Fetch ticket-level documents if any
+    const ticketDocs = await Document.findAll({
+      where: { linked_id: ticket.ticket_id, table_name: 'ticket' },
+      attributes: ['document_id', 'doc_name', 'mime_type', 'created_on']
+    });
+
+    // Attach assignee object if assigned
+    let assigneeObj = null;
+    if (ticketPlain.assigned_to) {
+      const assigneeUser = await User.findByPk(ticketPlain.assigned_to);
+      if (assigneeUser) {
+        assigneeObj = {
+          user_id: assigneeUser.user_id,
+          username: assigneeUser.username,
+          email: assigneeUser.email
+        };
+      }
+    }
+
+    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(ticketPlain);
+
+    return res.status(201).json({
+      message: 'Reply added successfully',
+      reply: reply,
+      documents: createdDocsMeta,
+      ticket: {
+        ...ticketPlain,
+        ticket_documents: ticketDocs.map(d => (d.toJSON ? d.toJSON() : d)),
+        assignee: assigneeObj,
+        sla,
+        response_sla_met,
+        resolve_sla_met
+      }
+    });
+  } catch (err) {
+    console.error('replyToTicket error:', err);
+    try { await t.rollback(); } catch (e) { /* ignore */ }
+    return res.status(500).json({ message: 'Internal server error: ' + err.message });
+  }
+};
+// Admin request close
+exports.adminRequestClose = async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const ticket = await Ticket.findByPk(ticketId);
     if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
-    if (!(await ensureOwnerOrAdmin(req, ticket))) return res.status(403).json({ message: 'Forbidden' });
+
+    if (ticket.status === 'Closed' || ticket.status === 'Pending') {
+      return res.status(400).json({ message: 'Ticket already closed or pending' });
+    }
+
+    ticket.prev_status = ticket.status;
+    ticket.status = 'Pending';
+    ticket.updated_at = new Date();
+    ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+    await ticket.save();
+
+    await TicketReply.create({
+      ticket_id: ticket.ticket_id,
+      sender_id: req.user.id ?? req.user.user_id,
+      sender_type: 'admin',
+      message: 'Admin has requested to close this ticket. Please approve or decline.'
+    });
+
+    // Notify owner
+    (async () => {
+      try {
+        let ownerEmail = null;
+        if (ticket.user_id) {
+          const owner = await User.findByPk(ticket.user_id, { attributes: ['email', 'username'] });
+          ownerEmail = owner?.email;
+        } else if (ticket.client_id) {
+          const owner = await Client.findByPk(ticket.client_id, { attributes: ['email', 'company_name'] });
+          ownerEmail = owner?.email;
+        }
+        
+        const admin = { username: req.user.username, email: req.user.email };
+        if (ownerEmail) {
+          const { subject, html, text } = ticketStatusChangedTemplate({ 
+            ticket: ticket.toJSON ? ticket.toJSON() : ticket, 
+            oldStatus: ticket.prev_status, 
+            newStatus: ticket.status, 
+            admin 
+          });
+          await sendMail({ to: ownerEmail, subject, html, text });
+        }
+      } catch (e) {
+        console.error('Mail error (adminRequestClose):', e && e.message ? e.message : e);
+      }
+    })();
 
     const plain = ticket.toJSON ? ticket.toJSON() : ticket;
-
-    // JS fallback sort to guarantee order
-    if (Array.isArray(plain.replies)) {
-      plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    }
-
     const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
-    plain.sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.sla ?? null;
-    plain.response_sla_met = response_sla_met;
-    plain.resolve_sla_met = resolve_sla_met;
-    plain.created_by_username = plain.creator?.username || 'Unknown';
 
-    return res.json({ ticket: plain });
+    return res.json({ message: 'Ticket marked Pending', ticket: { ...plain, sla, response_sla_met, resolve_sla_met } });
   } catch (err) {
-    console.error('getTicketById', err);
+    console.error('adminRequestClose', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
-
-
-
-
-// GET /api/ticket/admin/all
-exports.adminGetAllTickets = async (req, res) => {
+// Admin update status
+exports.adminUpdateStatus = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
-    const tickets = await Ticket.findAll({
-      include: [
-        {
-          model: TicketReply,
-          as: 'replies',
-          include: [
-            { model: User, as: 'sender', attributes: ['user_id', 'username'] },
-            { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'doc_base64', 'mime_type', 'created_on'] }
-          ]
-        },
-        { model: User, as: 'creator', attributes: ['user_id', 'username', 'email'] },
-        { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'doc_base64', 'mime_type', 'created_on'] },
-        { model: SLA, as: 'sla' }
-      ],
-      order: [
-        // replies ascending
-        [{ model: TicketReply, as: 'replies' }, 'created_at', 'ASC'],
-        // tickets descending
-        ['created_at', 'DESC']
-      ]
+    const { ticketId } = req.params;
+    const { status } = req.body;
+    const allowed = ['Open', 'Pending', 'Resolved', 'Closed'];
+    if (!allowed.includes(status)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    const ticket = await Ticket.findByPk(ticketId, { transaction: t });
+    if (!ticket) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    const oldStatus = ticket.status;
+    ticket.prev_status = ticket.status;
+    ticket.status = status;
+    ticket.updated_at = new Date();
+    ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+
+    if ((status === 'Resolved' || status === 'Closed') && !ticket.resolved_at) {
+      const now = new Date();
+      ticket.resolved_at = now;
+      ticket.resolve_time_seconds = secondsBetween(ticket.created_at, now);
+    }
+
+    await ticket.save({ transaction: t });
+
+    await TicketReply.create({
+      ticket_id: ticket.ticket_id,
+      sender_id: req.user.id ?? req.user.user_id,
+      sender_type: 'admin',
+      message: `Admin updated status to ${status}`
+    }, { transaction: t });
+
+    await t.commit();
+
+    // Notify owner
+    (async () => {
+      try {
+        let ownerEmail = null;
+        if (ticket.user_id) {
+          const owner = await User.findByPk(ticket.user_id, { attributes: ['email', 'username'] });
+          ownerEmail = owner?.email;
+        } else if (ticket.client_id) {
+          const owner = await Client.findByPk(ticket.client_id, { attributes: ['email', 'company_name'] });
+          ownerEmail = owner?.email;
+        }
+        
+        const admin = { username: req.user.username, email: req.user.email };
+        if (ownerEmail) {
+          const { subject, html, text } = ticketStatusChangedTemplate({ 
+            ticket: ticket.toJSON ? ticket.toJSON() : ticket, 
+            oldStatus, 
+            newStatus: status, 
+            admin 
+          });
+          await sendMail({ to: ownerEmail, subject, html, text });
+        }
+      } catch (e) {
+        console.error('Mail error (adminUpdateStatus):', e && e.message ? e.message : e);
+      }
+    })();
+
+    const plain = ticket.toJSON ? ticket.toJSON() : ticket;
+    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
+
+    return res.json({ message: 'Status updated', ticket: { ...plain, sla, response_sla_met, resolve_sla_met } });
+  } catch (err) {
+    console.error('adminUpdateStatus', err);
+    await t.rollback();
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// User approve closure
+exports.userApproveClosure = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { ticketId } = req.params;
+    const ticket = await Ticket.findByPk(ticketId, { transaction: t });
+    if (!ticket) { await t.rollback(); return res.status(404).json({ message: 'Ticket not found' }); }
+    
+    const uid = req.user.id ?? req.user.user_id;
+    if (ticket.user_id !== uid) { await t.rollback(); return res.status(403).json({ message: 'Only owner can approve' }); }
+    if (ticket.status !== 'Pending') { await t.rollback(); return res.status(400).json({ message: 'Ticket not pending' }); }
+
+    ticket.prev_status = ticket.status;
+    ticket.status = 'Closed';
+    ticket.updated_at = new Date();
+
+    if (!ticket.resolved_at) {
+      const now = new Date();
+      ticket.resolved_at = now;
+      ticket.resolve_time_seconds = secondsBetween(ticket.created_at, now);
+    }
+
+    await ticket.save({ transaction: t });
+
+    await TicketReply.create({
+      ticket_id: ticket.ticket_id,
+      sender_id: uid,
+      sender_type: 'user',
+      message: 'User approved closure.'
+    }, { transaction: t });
+
+    await t.commit();
+
+    // Notify admins optionally
+    (async () => {
+      try {
+        const admins = await User.findAll({ where: { role_name: 'admin', is_active: true }, attributes: ['email', 'username'] });
+        const adminEmails = admins.map(a => a.email).filter(Boolean);
+        if (adminEmails.length > 0) {
+          const adminActor = { username: req.user.username, email: req.user.email };
+          const { subject, html, text } = ticketStatusChangedTemplate({ 
+            ticket: ticket.toJSON ? ticket.toJSON() : ticket, 
+            oldStatus: ticket.prev_status, 
+            newStatus: ticket.status, 
+            admin: adminActor 
+          });
+          await sendMail({ to: adminEmails.join(','), subject, html, text });
+        }
+      } catch (e) {
+        console.error('Mail error (userApproveClosure):', e && e.message ? e.message : e);
+      }
+    })();
+
+    const plain = ticket.toJSON ? ticket.toJSON() : ticket;
+    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
+
+    return res.json({ message: 'Ticket closed', ticket: { ...plain, sla, response_sla_met, resolve_sla_met } });
+  } catch (err) {
+    console.error('userApproveClosure', err);
+    await t.rollback();
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// User decline closure
+exports.userDeclineClosure = async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const ticket = await Ticket.findByPk(ticketId);
+    if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+    const uid = req.user.id ?? req.user.user_id;
+    if (ticket.user_id !== uid) return res.status(403).json({ message: 'Only owner can decline' });
+    if (ticket.status !== 'Pending') return res.status(400).json({ message: 'Ticket not pending' });
+
+    const previous = ticket.prev_status || 'Open';
+    ticket.status = previous;
+    ticket.prev_status = null;
+    ticket.updated_at = new Date();
+    await ticket.save();
+
+    await TicketReply.create({
+      ticket_id: ticket.ticket_id,
+      sender_id: uid,
+      sender_type: 'user',
+      message: 'User declined closure. Reopened for work.'
     });
 
-    // const ticketsWithSLA = await Promise.all(
-    //   tickets.map(async (t) => {
-    //     const plain = t.toJSON ? t.toJSON() : t;
-    //     if (Array.isArray(plain.replies)) {
-    //       plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    //     }
-    //     const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
-    //     plain.sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.sla ?? null;
-    //     plain.response_sla_met = response_sla_met;
-    //     plain.resolve_sla_met = resolve_sla_met;
-    //     return plain;
-    //   })
-    // );
-
-
-    // In both adminGetAllTickets and getUserTickets, add this line in the mapping function:
-const ticketsWithSLA = await Promise.all(
-  tickets.map(async (t) => {
-    const plain = t.toJSON ? t.toJSON() : t;
-    if (Array.isArray(plain.replies)) {
-      plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    }
+    const plain = ticket.toJSON ? ticket.toJSON() : ticket;
     const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
-    plain.sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.sla ?? null;
-    plain.response_sla_met = response_sla_met;
-    plain.resolve_sla_met = resolve_sla_met;
-    
-    // ADD THIS LINE to ensure is_other_issue is included
-    plain.is_other_issue = plain.is_other_issue ?? false;
-    
-    return plain;
-  })
-);
 
-    return res.json({ tickets: ticketsWithSLA });
+    return res.json({ message: 'Ticket reverted to previous status', ticket: { ...plain, sla, response_sla_met, resolve_sla_met } });
   } catch (err) {
-    console.error('adminGetAllTickets', err);
+    console.error('userDeclineClosure', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
+// User reopen ticket
+exports.userReopenTicket = async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const ticket = await Ticket.findByPk(ticketId);
+    if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+    const uid = req.user.id ?? req.user.user_id;
+    if (ticket.user_id !== uid) return res.status(403).json({ message: 'Only owner can reopen' });
+    if (ticket.status !== 'Closed') return res.status(400).json({ message: 'Only closed tickets can be reopened' });
 
+    ticket.prev_status = ticket.status;
+    ticket.status = 'Pending';
+    ticket.updated_at = new Date();
+    await ticket.save();
 
+    await TicketReply.create({
+      ticket_id: ticket.ticket_id,
+      sender_id: uid,
+      sender_type: 'user',
+      message: 'User reopened the ticket.'
+    });
+
+    const plain = ticket.toJSON ? ticket.toJSON() : ticket;
+    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
+
+    return res.json({ message: 'Ticket reopened', ticket: { ...plain, sla, response_sla_met, resolve_sla_met } });
+  } catch (err) {
+    console.error('userReopenTicket', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Assign ticket to executive
 exports.assignTicket = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { ticketId } = req.params;
-    const { assigned_to } = req.body; // user id of executive
+    const { assigned_to } = req.body;
     if (!assigned_to) { await t.rollback(); return res.status(400).json({ message: 'assigned_to required' }); }
 
-    // check admin
+    // Check admin
     if (!req.user || req.user.role_name !== 'admin') {
       await t.rollback();
       return res.status(403).json({ message: 'Only admins can assign tickets' });
@@ -1219,7 +1805,7 @@ exports.assignTicket = async (req, res) => {
     const ticket = await Ticket.findByPk(ticketId, { transaction: t });
     if (!ticket) { await t.rollback(); return res.status(404).json({ message: 'Ticket not found' }); }
 
-    // verify assignee exists and is executive
+    // Verify assignee exists and is executive
     const assignee = await User.findByPk(assigned_to);
     if (!assignee || assignee.role_name !== 'executive') {
       await t.rollback();
@@ -1231,7 +1817,7 @@ exports.assignTicket = async (req, res) => {
     ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
     await ticket.save({ transaction: t });
 
-    // create an admin reply log that admin assigned to executive (optional)
+    // Create an admin reply log
     await TicketReply.create({
       ticket_id: ticket.ticket_id,
       sender_id: req.user.id ?? req.user.user_id,
@@ -1241,7 +1827,7 @@ exports.assignTicket = async (req, res) => {
 
     await t.commit();
 
-    // notify the executive (fire-and-forget)
+    // Notify the executive
     (async () => {
       try {
         if (assignee.email) {
@@ -1260,67 +1846,7 @@ exports.assignTicket = async (req, res) => {
   }
 };
 
-
-
-exports.execGetAssignedTickets = async (req, res) => {
-  try {
-    const uid = req.user.id ?? req.user.user_id;
-    if (!req.user || req.user.role_name !== 'executive') return res.status(403).json({ message: 'Forbidden' });
-
-    const tickets = await Ticket.findAll({
-      where: { assigned_to: uid },
-      include: [
-        { model: TicketReply, as: 'replies', include: [{ model: User, as: 'sender' }, { model: Document, as: 'documents' }] },
-        { model: User, as: 'creator', attributes: ['user_id','username','email'] },
-        { model: Document, as: 'documents' },
-        { model: SLA, as: 'sla' }
-      ],
-      order: [
-        [{ model: TicketReply, as: 'replies'}, 'created_at', 'ASC'],
-        ['created_at','DESC']
-      ]
-    });
-
-    // compute SLA etc (you already have computeSLACompliance)
-    // const resp = await Promise.all(tickets.map(async (t) => {
-    //   const plain = t.toJSON ? t.toJSON() : t;
-    //   const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
-    //   plain.sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.sla;
-    //   plain.response_sla_met = response_sla_met;
-    //   plain.resolve_sla_met = resolve_sla_met;
-    //   return plain;
-    // }));
-
-
-    // In both adminGetAllTickets and getUserTickets, add this line in the mapping function:
-const resp = await Promise.all(
-  tickets.map(async (t) => {
-    const plain = t.toJSON ? t.toJSON() : t;
-    if (Array.isArray(plain.replies)) {
-      plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    }
-    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
-    plain.sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.sla ?? null;
-    plain.response_sla_met = response_sla_met;
-    plain.resolve_sla_met = resolve_sla_met;
-    
-    // ADD THIS LINE to ensure is_other_issue is included
-    plain.is_other_issue = plain.is_other_issue ?? false;
-    
-    return plain;
-  })
-);
-
-    return res.json({ tickets: resp });
-  } catch (err) {
-    console.error('execGetAssignedTickets', err);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
-
-
-
-// Add this function to your ticketController.js
+// Update ticket priority
 exports.updateTicketPriority = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -1375,7 +1901,9 @@ exports.updateTicketPriority = async (req, res) => {
           ],
         },
         { model: User, as: 'creator', attributes: ['user_id', 'username', 'email', 'first_name', 'last_name'] },
+        { model: Client, as: 'client', attributes: ['client_id', 'company_name', 'contact_person', 'email'] },
         { model: SLA, as: 'sla' },
+        { model: ClientSLA, as: 'client_sla' },
         { model: Document, as: 'documents', attributes: ['document_id', 'doc_name', 'doc_base64', 'mime_type', 'created_on'] }
       ],
       order: [
@@ -1394,7 +1922,7 @@ exports.updateTicketPriority = async (req, res) => {
       sla: sla ? (sla.toJSON ? sla.toJSON() : sla) : plainTicket.sla ?? null,
       response_sla_met,
       resolve_sla_met,
-      created_by_username: plainTicket.creator?.username || 'Unknown'
+      created_by_username: plainTicket.creator?.username || plainTicket.client?.company_name || 'Unknown'
     };
 
     return res.status(200).json({ 
@@ -1405,5 +1933,26 @@ exports.updateTicketPriority = async (req, res) => {
     console.error('updateTicketPriority error:', err);
     try { await t.rollback(); } catch (e) { /* ignore */ }
     return res.status(500).json({ message: 'Internal server error: ' + err.message });
+  }
+};
+
+// Get document
+exports.getDocument = async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const doc = await Document.findByPk(id);
+    if (!doc) return res.status(404).json({ message: 'Not found' });
+
+    if (doc.doc_base64) {
+      const buffer = Buffer.from(doc.doc_base64, 'base64');
+      res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${doc.doc_name || 'file'}"`);
+      return res.send(buffer);
+    } else {
+      return res.status(404).json({ message: 'No binary content' });
+    }
+  } catch (err) {
+    console.error('getDocument', err);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };

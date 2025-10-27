@@ -1,4 +1,3 @@
-// models/ticketReply.js
 module.exports = (sequelize, DataTypes) => {
   const TicketReply = sequelize.define(
     'TicketReply',
@@ -17,7 +16,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       sender_type: {
-        type: DataTypes.ENUM('user', 'admin', 'system'),
+        type: DataTypes.ENUM('user', 'admin', 'system', 'client'),
         allowNull: false,
       },
       message: {
@@ -37,8 +36,23 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   TicketReply.associate = (models) => {
-    TicketReply.belongsTo(models.Ticket, { foreignKey: 'ticket_id', as: 'ticket' });
-    TicketReply.belongsTo(models.User, { foreignKey: 'sender_id', as: 'sender' });
+    TicketReply.belongsTo(models.Ticket, { 
+      foreignKey: 'ticket_id', 
+      as: 'ticket' 
+    });
+    
+    // FIXED: Remove scopes from associations to allow proper data retrieval
+    TicketReply.belongsTo(models.User, { 
+      foreignKey: 'sender_id', 
+      as: 'sender',
+      constraints: false
+    });
+    
+    TicketReply.belongsTo(models.Client, { 
+      foreignKey: 'sender_id', 
+      as: 'sender_client',
+      constraints: false
+    });
 
     if (models.Document) {
       TicketReply.hasMany(models.Document, {

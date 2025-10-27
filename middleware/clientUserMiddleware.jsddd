@@ -1,0 +1,30 @@
+// middleware/clientUserMiddleware.js
+const jwt = require('jsonwebtoken');
+const { jwtSecret } = require('../config/config');
+
+module.exports = (req, res, next) => {
+  try {
+    // Extract client user info from headers
+    const clientUserId = req.headers['x-client-user-id'];
+    const clientUserName = req.headers['x-client-user-name'];
+    const clientUserEmail = req.headers['x-client-user-email'];
+    const clientUserRole = req.headers['x-client-user-role'] || 'user';
+
+    // If client user info is provided, add to request
+    if (clientUserId && clientUserName && clientUserEmail) {
+      req.client_user = {
+        id: clientUserId,
+        name: clientUserName,
+        email: clientUserEmail,
+        role: clientUserRole
+      };
+      
+      console.log(`Client user authenticated: ${clientUserName} (${clientUserRole})`);
+    }
+
+    next();
+  } catch (err) {
+    console.error('Client user middleware error:', err);
+    next(); // Continue without client user info
+  }
+};
