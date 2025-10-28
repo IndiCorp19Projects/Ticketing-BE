@@ -80,6 +80,20 @@ client_user_id: {
         type: DataTypes.STRING(255), 
         allowNull: true 
       },
+      // In models/ticket.js, add these fields:
+escalation_level: {
+  type: DataTypes.INTEGER,
+  allowNull: true,
+  defaultValue: null
+},
+escalation_status: {
+  type: DataTypes.ENUM('not_escalated', 'level_1', 'level_2', 'level_3', 'resolved'),
+  defaultValue: 'not_escalated'
+},
+current_escalation_id: {
+  type: DataTypes.INTEGER,
+  allowNull: true
+},
     },
     {
       tableName: 'ticket',
@@ -87,6 +101,54 @@ client_user_id: {
     }
   );
 
+// Ticket.associate = (models) => {
+//   Ticket.belongsTo(models.User, { foreignKey: 'user_id', as: 'creator' });
+  
+//   // ADD Client association
+//   Ticket.belongsTo(models.Client, { 
+//     foreignKey: 'client_id', 
+//     as: 'client',
+//     constraints: false 
+//   });
+
+//   Ticket.belongsTo(models.Category, { foreignKey: 'category_id', as: 'category_obj', constraints: false });
+//   Ticket.belongsTo(models.SubCategory, { foreignKey: 'subcategory_id', as: 'subcategory_obj', constraints: false });
+//   Ticket.belongsTo(models.IssueType, { foreignKey: 'issue_type_id', as: 'issue_type_obj', constraints: false });
+//   Ticket.belongsTo(models.Priority, { foreignKey: 'priority_id', as: 'priority_obj', constraints: false });
+
+//   Ticket.hasMany(models.TicketReply, { foreignKey: 'ticket_id', as: 'replies' });
+
+//   if (models.TicketImage) {
+//     Ticket.hasMany(models.TicketImage, { foreignKey: 'ticket_id', as: 'images' });
+//   }
+
+//   if (models.SLA) {
+//     Ticket.belongsTo(models.SLA, { foreignKey: 'sla_id', as: 'sla' });
+//   }
+
+//   // ADD ClientSLA association
+//   if (models.ClientSLA) {
+//     Ticket.belongsTo(models.ClientSLA, { 
+//       foreignKey: 'client_sla_id', 
+//       as: 'client_sla',
+//       constraints: false 
+//     });
+//   }
+
+//   if (models.Document) {
+//     Ticket.hasMany(models.Document, {
+//       foreignKey: 'linked_id',
+//       as: 'documents',
+//       scope: { table_name: 'ticket' },
+//       constraints: false
+//     });
+//   }
+
+//   Ticket.belongsTo(models.User, { foreignKey: 'assigned_to', as: 'assignee', constraints: false });
+// };
+
+
+// models/ticket.js - Add these to the associate function
 Ticket.associate = (models) => {
   Ticket.belongsTo(models.User, { foreignKey: 'user_id', as: 'creator' });
   
@@ -131,7 +193,21 @@ Ticket.associate = (models) => {
   }
 
   Ticket.belongsTo(models.User, { foreignKey: 'assigned_to', as: 'assignee', constraints: false });
-};
 
+  // ADD THESE ESCALATION ASSOCIATIONS
+  if (models.Escalation) {
+    // A ticket can have many escalations (history)
+    Ticket.hasMany(models.Escalation, { 
+      foreignKey: 'ticket_id', 
+      as: 'escalations' 
+    });
+    
+    // A ticket can have one current escalation
+    Ticket.belongsTo(models.Escalation, { 
+      foreignKey: 'current_escalation_id', 
+      as: 'current_escalation' 
+    });
+  }
+};
   return Ticket;
 };

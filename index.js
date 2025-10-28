@@ -72,6 +72,15 @@ const clientTicketRoutes = require('./routes/clientTicketRoutes');
 app.use('/api/client/auth', clientAuthRoutes);
 app.use('/api/client/tickets', clientTicketRoutes);
 
+// In your main app.js file, add:
+const escalationRoutes = require('./routes/escalationRoutes');
+app.use('/api/client/escalations', escalationRoutes);
+
+
+// In your main app.js file, add:
+const escalationReportRoutes = require('./routes/escalationReportRoutes');
+app.use('/api/escalation-reports', escalationReportRoutes);
+
 
 
 app.get('/', (req, res) => res.send('Ticketing system API running'));

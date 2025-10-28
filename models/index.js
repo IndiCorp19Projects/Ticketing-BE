@@ -30,6 +30,11 @@ const SystemRegistration = require('./SystemRegistration')(sequelize, Sequelize.
 const Client = require('./client')(sequelize, Sequelize.DataTypes);
 const ClientSLA = require('./clientSLA')(sequelize, Sequelize.DataTypes);
 
+const Escalation = require('./escalation.js')(sequelize, Sequelize.DataTypes);
+
+const EscalationHistory = require('./escalationHistory')(sequelize, Sequelize.DataTypes);
+const EscalationLevel = require('./escalationLevel')(sequelize, Sequelize.DataTypes);
+
 // FIXED: Use correct property names - don't overwrite Document with IssueType
 dbObj.User = User;
 dbObj.Ticket = Ticket;
@@ -47,6 +52,12 @@ dbObj.SystemRegistration = SystemRegistration; // ADD THIS
 
 dbObj.Client = Client;
 dbObj.ClientSLA = ClientSLA;
+
+
+dbObj.Escalation = Escalation; // ADD THIS
+
+dbObj.EscalationHistory = EscalationHistory;
+dbObj.EscalationLevel = EscalationLevel;
 
 // call associate on each model if present (once)
 Object.keys(dbObj).forEach((key) => {
