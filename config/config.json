@@ -4,7 +4,8 @@
     "password": "LOGIndiCorp@20190307",
     "database": "TicketingTool",
     "host": "148.135.138.69",
-    "dialect": "mysql"
+    "dialect": "mysql",
+    "logging": "console.log"
   },
   "test": {
     "username": "pmauser",
