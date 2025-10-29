@@ -59,7 +59,7 @@ async function calculateWorkingHours(startDate, endDate) {
       } else {
         // Normal working hours
         workStart.setHours(WORK_START_HOUR, 0, 0, 0);
-        workEnd.setHours(WORK_END_HOUR, 0, 0, 0, 0);
+        workEnd.setHours(WORK_END_HOUR, 0, 0, 0);
       }
 
       const startTime = dateStart > workStart ? dateStart : workStart;
@@ -69,8 +69,14 @@ async function calculateWorkingHours(startDate, endDate) {
         ? dateEnd
         : workEnd;
 
-      const diff = (endTime - startTime) / (1000 * 60 * 60);
-      return diff > 0 ? diff : 0;
+      const diffMs = endTime - startTime;
+      if (diffMs <= 0) return 0;
+
+      const hours = Math.floor(diffMs / (1000 * 60 * 60));
+      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+      // Convert minutes into decimal (e.g., 30 min → .30)
+      return parseFloat(`${hours}.${minutes.toString().padStart(2, "0")}`);
     };
 
     // --- CASE 1: Same day ---
@@ -135,5 +141,4 @@ async function calculateWorkingHours(startDate, endDate) {
 
 module.exports = calculateWorkingHours;
 
-// const result = await calculateWorkingHours("2025-10-28T10:00:00", "2025-10-29T16:00:00");/
-
+// const result = await calculateWorkingHours("2025-10-28T10:00:00", "2025-10-29T16:00:00");

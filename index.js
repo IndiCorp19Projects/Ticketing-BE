@@ -42,137 +42,179 @@ app.use(
   })
 );
 
-// app.post("/api/calculateTime", async (req, res) => {
-//   try {
-//     const { start_date_time, end_date_time } = req.body;
+app.post("/api/calculateTime", async (req, res) => {
+  try {
+    const { start_date_time, end_date_time } = req.body;
 
-//     if (!start_date_time || !end_date_time) {
-//       return res
-//         .status(400)
-//         .json({ message: "start_date_time and end_date_time are required" });
-//     }
+    if (!start_date_time || !end_date_time) {
+      return res
+        .status(400)
+        .json({ message: "start_date_time and end_date_time are required" });
+    }
 
-//     const start = new Date(start_date_time);
-//     const end = new Date(end_date_time);
+    const start = new Date(start_date_time);
+    const end = new Date(end_date_time);
 
-//     if (end < start) {
-//       return res
-//         .status(400)
-//         .json({ message: "end_date_time must be after start_date_time" });
-//     }
+    if (end < start) {
+      return res
+        .status(400)
+        .json({ message: "end_date_time must be after start_date_time" });
+    }
 
-//     // Default working hours (10 AM - 6 PM)
-//     const WORK_START_HOUR = 10;
-//     const WORK_END_HOUR = 18;
-//     const FULL_DAY_HOURS = 8;
+    // Default working hours (10 AM - 6 PM)
+    const WORK_START_HOUR = 10;
+    const WORK_END_HOUR = 18;
+    const FULL_DAY_HOURS = 8;
 
-//     // Fetch all exceptions between start and end
-//     const exceptions = await Exception.findAll({
-//       where: {
-//         date: {
-//           [Op.between]: [start, end],
-//         },
-//       },
-//       raw: true,
-//     });
+    // Fetch all exceptions between start and end
+    const exceptions = await Exception.findAll({
+      where: {
+        date: {
+          [Op.between]: [start, end],
+        },
+      },
+      raw: true,
+    });
 
-//     // Helper: get exception by date
-//     const getExceptionForDate = (date) => {
-//       const dateStr = date.toISOString().split("T")[0]; // 'YYYY-MM-DD'
-//       return exceptions.find((ex) => ex.date === dateStr);
-//     };
+    // Helper: get exception by date
+    const getExceptionForDate = (date) => {
+      const dateStr = date.toISOString().split("T")[0]; // 'YYYY-MM-DD'
+      return exceptions.find((ex) => ex.date === dateStr);
+    };
 
-//     // Helper: calculate working hours for a given day
-//     const getWorkingHoursForDay = (dateStart, dateEnd, isEndDate = false) => {
-//       const exception = getExceptionForDate(dateStart);
+    // Helper: calculate working hours for a given day
+    // const getWorkingHoursForDay = (dateStart, dateEnd, isEndDate = false) => {
+    //   const exception = getExceptionForDate(dateStart);
 
-//       // If it's a holiday
-//       if (!isEndDate && exception && exception.type === "holiday") {
-//         return 0;
-//       }
+    //   // If it's a holiday
+    //   if (!isEndDate && exception && exception.type === "holiday") {
+    //     return 0;
+    //   }
 
-//       // Determine work start and end times for this day
-//       const workStart = new Date(dateStart);
-//       const workEnd = new Date(dateStart);
+    //   // Determine work start and end times for this day
+    //   const workStart = new Date(dateStart);
+    //   const workEnd = new Date(dateStart);
 
-//       if (exception && exception.open_time && exception.close_time) {
-//         // Apply exception times (e.g., half-day)
-//         const [openHour, openMin] = exception.open_time.split(":").map(Number);
-//         const [closeHour, closeMin] = exception.close_time.split(":").map(Number);
-//         workStart.setHours(openHour, openMin, 0, 0);
-//         workEnd.setHours(closeHour, closeMin, 0, 0);
-//       } else {
-//         // Normal working hours
-//         workStart.setHours(WORK_START_HOUR, 0, 0, 0);
-//         workEnd.setHours(WORK_END_HOUR, 0, 0, 0);
-//       }
+    //   if (exception && exception.open_time && exception.close_time) {
+    //     // Apply exception times (e.g., half-day)
+    //     const [openHour, openMin] = exception.open_time.split(":").map(Number);
+    //     const [closeHour, closeMin] = exception.close_time.split(":").map(Number);
+    //     workStart.setHours(openHour, openMin, 0, 0);
+    //     workEnd.setHours(closeHour, closeMin, 0, 0);
+    //   } else {
+    //     // Normal working hours
+    //     workStart.setHours(WORK_START_HOUR, 0, 0, 0);
+    //     workEnd.setHours(WORK_END_HOUR, 0, 0, 0);
+    //   }
 
-//       const startTime = dateStart > workStart ? dateStart : workStart;
-//       const endTime = isEndDate ? dateEnd : (dateEnd < workEnd ? dateEnd : workEnd);
+    //   const startTime = dateStart > workStart ? dateStart : workStart;
+    //   const endTime = isEndDate ? dateEnd : (dateEnd < workEnd ? dateEnd : workEnd);
 
-//       const diff = (endTime - startTime) / (1000 * 60 * 60);
-//       return diff > 0 ? diff : 0;
-//     };
+    //   const diff = (endTime - startTime) / (1000 * 60 * 60);
+    //   return diff > 0 ? diff : 0;
+    // };
+    const getWorkingHoursForDay = (dateStart, dateEnd, isEndDate = false) => {
+      const exception = getExceptionForDate(dateStart);
 
-//     // --- CASE 1: Same day ---
-//     if (start.toDateString() === end.toDateString()) {
-//       const hours = getWorkingHoursForDay(start, end, true);
-//       return res.json({
-//         success: true,
-//         totalWorkingHours: hours.toFixed(2),
-//       });
-//     }
+      // If it's a holiday
+      if (!isEndDate && exception && exception.type === "holiday") {
+        return 0;
+      }
 
-//     // --- CASE 2: Multiple days ---
-//     const firstDayEnd = new Date(start);
-//     firstDayEnd.setHours(23, 59, 59, 999);
-//     const firstDayHours = getWorkingHoursForDay(start, firstDayEnd);
+      // Determine work start and end times for this day
+      const workStart = new Date(dateStart);
+      const workEnd = new Date(dateStart);
 
-//     const lastDayStart = new Date(end);
-//     lastDayStart.setHours(0, 0, 0, 0);
-//     const lastDayHours = getWorkingHoursForDay(lastDayStart, end, true);
+      if (exception && exception.open_time && exception.close_time) {
+        // Apply exception times (e.g., half-day)
+        const [openHour, openMin] = exception.open_time.split(":").map(Number);
+        const [closeHour, closeMin] = exception.close_time
+          .split(":")
+          .map(Number);
+        workStart.setHours(openHour, openMin, 0, 0);
+        workEnd.setHours(closeHour, closeMin, 0, 0);
+      } else {
+        // Normal working hours
+        workStart.setHours(WORK_START_HOUR, 0, 0, 0);
+        workEnd.setHours(WORK_END_HOUR, 0, 0, 0);
+      }
 
-//     // Days between
-//     let middleDaysHours = 0;
-//     const tempDate = new Date(firstDayEnd);
-//     tempDate.setDate(tempDate.getDate() + 1);
+      const startTime = dateStart > workStart ? dateStart : workStart;
+      const endTime = isEndDate
+        ? dateEnd
+        : dateEnd < workEnd
+        ? dateEnd
+        : workEnd;
 
-//     while (tempDate < lastDayStart) {
-//       const exception = getExceptionForDate(tempDate);
+      const diffMs = endTime - startTime;
+      if (diffMs <= 0) return 0;
 
-//       if (exception && exception.type === "holiday") {
-//         // No working hours
-//         middleDaysHours += 0;
-//       } else if (exception && exception.open_time && exception.close_time) {
-//         // Use custom working hour from exception if available
-//         middleDaysHours += exception.working_hour ?? 0;
-//       } else {
-//         // Normal full day
-//         middleDaysHours += FULL_DAY_HOURS;
-//       }
+      const hours = Math.floor(diffMs / (1000 * 60 * 60));
+      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
 
-//       tempDate.setDate(tempDate.getDate() + 1);
-//     }
+      // Convert minutes into decimal (e.g., 30 min → .30)
+      return parseFloat(`${hours}.${minutes.toString().padStart(2, "0")}`);
+    };
 
-//     const total =
-//       firstDayHours + lastDayHours + middleDaysHours;
+    // --- CASE 1: Same day ---
+    if (start.toDateString() === end.toDateString()) {
+      const hours = getWorkingHoursForDay(start, end, true);
+      return res.json({
+        success: true,
+        totalWorkingHours: hours.toFixed(2),
+      });
+    }
 
-//     res.json({
-//       success: true,
-//       firstDayHours: firstDayHours.toFixed(2),
-//       lastDayHours: lastDayHours.toFixed(2),
-//       middleDaysHours: middleDaysHours.toFixed(2),
-//       totalWorkingHours: total.toFixed(2),
-//     });
-//   } catch (error) {
-//     console.error("Error calculating working hours:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Error calculating time",
-//       error: error.message,
-//     });
-//   }
-// });
+    // --- CASE 2: Multiple days ---
+    const firstDayEnd = new Date(start);
+    firstDayEnd.setHours(23, 59, 59, 999);
+    const firstDayHours = getWorkingHoursForDay(start, firstDayEnd);
+
+    const lastDayStart = new Date(end);
+    lastDayStart.setHours(0, 0, 0, 0);
+    const lastDayHours = getWorkingHoursForDay(lastDayStart, end, true);
+
+    // Days between
+    let middleDaysHours = 0;
+    const tempDate = new Date(firstDayEnd);
+    tempDate.setDate(tempDate.getDate() + 1);
+
+    while (tempDate < lastDayStart) {
+      const exception = getExceptionForDate(tempDate);
+
+      if (exception && exception.type === "holiday") {
+        // No working hours
+        middleDaysHours += 0;
+      } else if (exception && exception.open_time && exception.close_time) {
+        // Use custom working hour from exception if available
+        middleDaysHours += exception.working_hour ?? 0;
+      } else {
+        // Normal full day
+        middleDaysHours += FULL_DAY_HOURS;
+      }
+
+      tempDate.setDate(tempDate.getDate() + 1);
+    }
+
+    const total = firstDayHours + lastDayHours + middleDaysHours;
+
+    res.json({
+      success: true,
+      firstDayHours: firstDayHours.toFixed(2),
+      lastDayHours: lastDayHours.toFixed(2),
+      middleDaysHours: middleDaysHours.toFixed(2),
+      totalWorkingHours: total.toFixed(2),
+    });
+  } catch (error) {
+    console.error("Error calculating working hours:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error calculating time",
+      error: error.message,
+    });
+  }
+});
+
 // app.post("/api/calculateTime", async (req, res) => {
 //   try {
 //     const { start_date_time, end_date_time } = req.body;
