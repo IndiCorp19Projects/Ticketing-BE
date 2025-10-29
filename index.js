@@ -5,18 +5,19 @@ require("dotenv").config();
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 
-const { sequelize } = require("./models");
-const authRoutes = require("./routes/authRoutes");
-const ticketRoutes = require("./routes/ticketRoutes");
-const adminRoutes = require("./routes/adminRoutes");
-const lookupRoutes = require("./routes/lookup");
-const categoryRoutes = require("./routes/categoryRoutes");
-const subCategoryRoutes = require("./routes/subCategoryRoutes");
-const priorityRoutes = require("./routes/priorityRoutes");
-const issueTypeRoutes = require("./routes/issueTypeRoutes");
-const slaRoutes = require("./routes/slaRoutes");
-const userRoutes = require("./routes/userRoutes");
-const systemRoutes = require("./routes/system");
+const { sequelize } = require('./models');
+const authRoutes = require('./routes/authRoutes');
+const ticketRoutes = require('./routes/ticketRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const lookupRoutes = require('./routes/lookup');
+const categoryRoutes = require('./routes/categoryRoutes');
+const subCategoryRoutes = require('./routes/subCategoryRoutes');
+const priorityRoutes = require('./routes/priorityRoutes');
+const issueTypeRoutes = require('./routes/issueTypeRoutes');
+const slaRoutes = require('./routes/slaRoutes');
+const userRoutes = require('./routes/userRoutes');
+const systemRoutes = require('./routes/system');
+const exceptionRoutes = require('./routes/exceptionRoutes');
 
 const app = express();
 
@@ -136,14 +137,16 @@ app.get("/api/check", (req, res) => {
 app.use("/api/admin", userRoutes);
 app.use("/api/auth", authRoutes);
 
-app.use("/api/admin/categories", categoryRoutes);
-app.use("/api/admin/subcategories", subCategoryRoutes);
-app.use("/api/admin/priorities", priorityRoutes);
-app.use("/api/admin/issuetypes", issueTypeRoutes);
-app.use("/api/admin/slas", slaRoutes);
-app.use("/api/ticket", ticketRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/system", systemRoutes);
+app.use('/api/admin/categories', categoryRoutes);
+app.use('/api/admin/subcategories', subCategoryRoutes);
+app.use('/api/admin/priorities', priorityRoutes);
+app.use('/api/admin/issuetypes', issueTypeRoutes);
+app.use('/api/admin/slas', slaRoutes);
+app.use('/api/ticket', ticketRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/system', systemRoutes);
+
+app.use('/api/admin/exceptions', exceptionRoutes);
 
 // Add this line to your main routes file
 app.use("/api/working-hours", require("./routes/workingHours"));

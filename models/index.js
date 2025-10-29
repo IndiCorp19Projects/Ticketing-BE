@@ -45,6 +45,8 @@ const EscalationLevel = require("./escalationLevel")(
   Sequelize.DataTypes
 );
 
+const Exception = require('./exception.js')(sequelize, Sequelize.DataTypes);
+
 // FIXED: Use correct property names - don't overwrite Document with IssueType
 dbObj.User = User;
 dbObj.Ticket = Ticket;
@@ -67,6 +69,7 @@ dbObj.Escalation = Escalation; // ADD THIS
 
 dbObj.EscalationHistory = EscalationHistory;
 dbObj.EscalationLevel = EscalationLevel;
+dbObj.Exception = Exception;
 
 // call associate on each model if present (once)
 Object.keys(dbObj).forEach((key) => {

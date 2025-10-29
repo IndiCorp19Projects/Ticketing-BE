@@ -1,6 +1,7 @@
 // controllers/issueTypeController.js
 const { IssueType, Priority, SLA, User } = require('../models');
 
+
 exports.listIssueTypes = async (req, res) => {
   try {
     const where = { is_active: true };
