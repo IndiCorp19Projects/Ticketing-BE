@@ -3,6 +3,7 @@ const { Ticket, TicketReply, Document, sequelize, User, SLA, Category, SubCatego
 const { sendMail } = require('../utils/mailer');
 const { ticketCreatedTemplate, ticketReplyTemplate, ticketStatusChangedTemplate } = require('../utils/emailTemplates');
 const SLACalculator = require('../utils/slaCalculator');
+const calculateWorkingHours = require('../utils/calculateWorkingHours');
 
 // Helper functions
 function secondsBetween(a, b) {
@@ -1321,7 +1322,9 @@ exports.replyToTicket = async (req, res) => {
     // If admin replies for the first time -> set response_at & response_time_seconds
     if (req.user && req.user.role_name === 'admin' && !ticket.response_at) {
       ticket.response_at = now;
-      ticket.response_time_seconds = secondsBetween(ticket.created_at, now);
+      const responseTime = await calculateWorkingHours(ticket.response_at, now);
+      console.log("responseTime", responseTime);
+      ticket.response_time_seconds = responseTime?.totalWorkingHours;
       ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
     }
 
