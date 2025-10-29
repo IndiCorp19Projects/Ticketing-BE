@@ -2,7 +2,7 @@
 module.exports = (sequelize, DataTypes) => {
   const Priority = sequelize.define('Priority', {
     priority_id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    name: { type: DataTypes.STRING(50), allowNull: false, unique: true }, // e.g. Low, Medium, High
+    name: { type: DataTypes.STRING(50), allowNull: false, unique: false }, // e.g. Low, Medium, High
     sort_order: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100 }
   }, {
     tableName: 'priority',

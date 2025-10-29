@@ -2,7 +2,7 @@
 module.exports = (sequelize, DataTypes) => {
   const IssueType = sequelize.define('IssueType', {
     issue_type_id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-    name: { type: DataTypes.STRING(150), allowNull: false, unique: true },
+    name: { type: DataTypes.STRING(150), allowNull: false, unique: false },
     description: { type: DataTypes.TEXT, allowNull: true },
     priority_id: { type: DataTypes.INTEGER, allowNull: true },
     is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },

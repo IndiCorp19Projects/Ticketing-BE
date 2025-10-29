@@ -7,6 +7,9 @@ const clientAuth = require('../middleware/clientAuth');
 // Apply client authentication to all routes
 router.use(clientAuth);
 
+
+// router.post('/upload-image', clientAuth, escalationController.uploadEscalationImage);
+
 // Get escalation levels
 router.get('/levels', escalationController.getEscalationLevels);
 
@@ -21,5 +24,9 @@ router.get('/tickets/:ticketId/escalation-history', escalationController.getEsca
 
 // Get current escalation status
 router.get('/tickets/:ticketId/escalation-status', escalationController.getCurrentEscalationStatus);
+
+// Add this to your existing escalationRoutes.js file
+// Add this to your existing escalationRoutes.js file
+// router.get('/reports/all', escalationController.getAllEscalationReports);
 
 module.exports = router;

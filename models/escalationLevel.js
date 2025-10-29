@@ -11,7 +11,7 @@ module.exports = (sequelize, DataTypes) => {
       level_number: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        unique: true
+        unique: false
       },
       level_name: {
         type: DataTypes.STRING(100),
