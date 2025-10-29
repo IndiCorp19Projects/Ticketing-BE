@@ -11,7 +11,7 @@ module.exports = (sequelize, DataTypes) => {
       system_name: {
         type: DataTypes.STRING(255),
         allowNull: false,
-        unique: true
+        unique: false
       },
       description: {
         type: DataTypes.TEXT,

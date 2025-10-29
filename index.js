@@ -17,6 +17,7 @@ const issueTypeRoutes = require('./routes/issueTypeRoutes');
 const slaRoutes = require('./routes/slaRoutes');
 const userRoutes = require('./routes/userRoutes');
 const systemRoutes = require('./routes/system');
+const exceptionRoutes = require('./routes/exceptionRoutes');
 
 const app = express();
 
@@ -62,7 +63,7 @@ app.use('/api/ticket', ticketRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/system', systemRoutes);
 
-
+app.use('/api/admin/exceptions', exceptionRoutes);
 
 // Add this line to your main routes file
 app.use('/api/working-hours', require('./routes/workingHours'));
