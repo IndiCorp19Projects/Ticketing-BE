@@ -7,8 +7,18 @@ async function calculateWorkingHours(startDate, endDate) {
       throw new Error("startDate and endDate are required");
     }
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    // const start = new Date(startDate);
+    // const end = new Date(endDate);
+    const start = new Date(
+      start_date_time?.includes(".")
+        ? start_date_time?.split(".")[0]
+        : start_date_time
+    );
+    const end = new Date(
+      end_date_time?.includes(".")
+        ? end_date_time?.split(".")[0]
+        : end_date_time
+    );
 
     if (end < start) {
       throw new Error("endDate must be after startDate");
