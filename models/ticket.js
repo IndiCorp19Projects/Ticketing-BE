@@ -45,7 +45,7 @@ module.exports = (sequelize, DataTypes) => {
       response_at: { type: DataTypes.DATE, allowNull: true },
       response_time_seconds: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
       resolved_at: { type: DataTypes.DATE, allowNull: true },
-      resolve_time_seconds: { type: DataTypes.INTEGER, allowNull: true },
+      resolve_time_seconds: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
       last_updated_by: { type: DataTypes.STRING(100), allowNull: true },
       assigned_to: { type: DataTypes.INTEGER, allowNull: true },
 

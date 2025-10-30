@@ -4,7 +4,7 @@ const clientTicketController = require('../controllers/clientTicketController');
 const clientAuth = require('../middleware/clientAuth');
 const upload = require('../middleware/uploadMemory');
 
-// Apply client authentication to all routes
+
 router.use(clientAuth);
 
 router.post('/raise', upload.array('files'), clientTicketController.raiseTicket);
