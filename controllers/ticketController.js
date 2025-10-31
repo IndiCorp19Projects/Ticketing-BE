@@ -884,6 +884,7 @@ exports.replyToTicket = async (req, res) => {
         ticket_id: ticket.ticket_id ?? ticket.id,
         sender_id: senderId,
         sender_type: sender_type,
+        client_sender_name:req?.user?.username,
         message: rawMessage ?? ''
       }, { transaction: t });
       console.log(`Created reply with sender_id: ${senderId}, sender_type: ${sender_type}`);
@@ -898,6 +899,7 @@ exports.replyToTicket = async (req, res) => {
           ticket_id: ticket.ticket_id ?? ticket.id,
           sender_id: senderId,
           sender_type: sender_type,
+          client_sender_name:req?.user?.username,
           message: ''
         }, { transaction: t });
       }
@@ -938,6 +940,7 @@ exports.replyToTicket = async (req, res) => {
             ticket_id: ticket.ticket_id ?? ticket.id,
             sender_id: senderId,
             sender_type: sender_type,
+            client_sender_name:req?.user?.username,
             message: ''
           }, { transaction: t });
         }

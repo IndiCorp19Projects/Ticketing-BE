@@ -19,6 +19,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.ENUM('user', 'admin', 'system', 'client'),
         allowNull: false,
       },
+       client_sender_name: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
       message: {
         type: DataTypes.TEXT,
         allowNull: false,
