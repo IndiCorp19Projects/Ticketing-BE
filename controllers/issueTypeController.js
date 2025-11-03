@@ -116,16 +116,16 @@ exports.deleteIssueType = async (req, res) => {
     }
 
     // Check if issue type is being used by any tickets
-    const Ticket = require('../models/Ticket');
-    const ticketCount = await Ticket.count({
-      where: { issue_type_id: id }
-    });
+    // const Ticket = require('../models/Ticket');
+    // const ticketCount = await Ticket.count({
+    //   where: { issue_type_id: id }
+    // });
 
-    if (ticketCount > 0) {
-      return res.status(400).json({ 
-        message: `Cannot deactivate issue type. It is currently being used by ${ticketCount} ticket(s).`
-      });
-    }
+    // if (ticketCount > 0) {
+    //   return res.status(400).json({ 
+    //     message: `Cannot deactivate issue type. It is currently being used by ${ticketCount} ticket(s).`
+    //   });
+    // }
 
     // Soft-delete
     await it.update({ is_active: false });

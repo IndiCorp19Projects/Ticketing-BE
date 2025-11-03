@@ -1,18 +1,23 @@
-// controllers/slaController.js
-const { SLA, User, IssueType, Ticket, sequelize } = require('../models');
+const { ClientSLA, Client, IssueType, Ticket, sequelize } = require('../models');
+
+// Helper function to validate IDs
+const validateId = (id) => {
+  const parsed = parseInt(id, 10);
+  return !isNaN(parsed) && parsed > 0 ? parsed : null;
+};
 
 exports.listSLAs = async (req, res) => {
   try {
     const includeInactive = req.query.includeInactive === 'true';
     const where = includeInactive ? {} : { is_active: true };
 
-    const slas = await SLA.findAll({
+    const slas = await ClientSLA.findAll({
       where,
       include: [
         {
-          model: User,
-          as: 'user',
-          attributes: ['user_id', 'username', 'first_name', 'last_name', 'email']
+          model: Client,
+          as: 'client',
+          attributes: ['client_id', 'company_name', 'contact_person', 'email']
         },
         {
           model: IssueType,
@@ -32,14 +37,18 @@ exports.listSLAs = async (req, res) => {
 
 exports.getSLA = async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = validateId(req.params.id);
     
-    const sla = await SLA.findByPk(id, {
+    if (!id) {
+      return res.status(400).json({ message: 'Invalid SLA ID' });
+    }
+    
+    const sla = await ClientSLA.findByPk(id, {
       include: [
         {
-          model: User,
-          as: 'user',
-          attributes: ['user_id', 'username', 'first_name', 'last_name', 'email']
+          model: Client,
+          as: 'client',
+          attributes: ['client_id', 'company_name', 'contact_person', 'email']
         },
         {
           model: IssueType,
@@ -61,7 +70,7 @@ exports.createSLA = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const {
-      user_id,
+      client_id,
       name,
       issue_type_id,
       response_target_minutes,
@@ -70,10 +79,11 @@ exports.createSLA = async (req, res) => {
       created_by
     } = req.body;
 
-    // Validation
-    if (!user_id) {
+    // Validate client_id
+    const clientId = validateId(client_id);
+    if (!clientId) {
       await t.rollback();
-      return res.status(400).json({ message: 'user_id is required' });
+      return res.status(400).json({ message: 'Valid client_id is required' });
     }
 
     if (!name || name.trim() === '') {
@@ -81,75 +91,57 @@ exports.createSLA = async (req, res) => {
       return res.status(400).json({ message: 'SLA name is required' });
     }
 
-    if (!issue_type_id) {
+    // Validate issue_type_id
+    const issueTypeId = validateId(issue_type_id);
+    if (!issueTypeId) {
       await t.rollback();
-      return res.status(400).json({ message: 'issue_type_id is required' });
+      return res.status(400).json({ message: 'Valid issue_type_id is required' });
     }
 
-    // Check if user exists
-    const user = await User.findByPk(user_id);
-    if (!user) {
+    // Check if client exists
+    const client = await Client.findByPk(clientId);
+    if (!client) {
       await t.rollback();
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: 'Client not found' });
     }
 
     // Check if issue type exists and is active
     const issueType = await IssueType.findOne({
-      where: { issue_type_id, is_active: true }
+      where: { issue_type_id: issueTypeId, is_active: true }
     });
     if (!issueType) {
       await t.rollback();
       return res.status(400).json({ message: 'Issue type not found or inactive' });
     }
 
-    // Check uniqueness (user_id + issue_type_id combination)
-    const existingIssueTypeSLA = await SLA.findOne({
-      where: { user_id, issue_type_id }
+    // Check uniqueness (client_id + issue_type_id combination)
+    const existingIssueTypeSLA = await ClientSLA.findOne({
+      where: { client_id: clientId, issue_type_id: issueTypeId }
     });
 
     if (existingIssueTypeSLA) {
       await t.rollback();
       return res.status(409).json({ 
-        message: 'SLA for this user and issue type already exists' 
+        message: 'SLA for this client and issue type already exists' 
       });
     }
 
-    // Check uniqueness (user_id + name combination)
-    const existingNameSLA = await SLA.findOne({
-      where: { user_id, name: name.trim() }
+    // Check uniqueness (client_id + name combination)
+    const existingNameSLA = await ClientSLA.findOne({
+      where: { client_id: clientId, name: name.trim() }
     });
 
     if (existingNameSLA) {
       await t.rollback();
       return res.status(409).json({ 
-        message: 'SLA with this name already exists for this user' 
+        message: 'SLA with this name already exists for this client' 
       });
     }
 
-
-    // In createSLA method - add this check if you want issue types to be globally unique
-const globalIssueTypeCheck = await SLA.findOne({
-  where: { 
-    issue_type_id: Number(issue_type_id),
-    is_active: true
-  }
-});
-
-if (globalIssueTypeCheck) {
-  await t.rollback();
-  return res.status(409).json({ 
-    message: 'This issue type is already associated with another SLA' 
-  });
-}
-
-
-
-    
-
-    const sla = await SLA.create({
-      user_id: Number(user_id),
+    const sla = await ClientSLA.create({
+      client_id: clientId,
       name: name.trim(),
-      issue_type_id: Number(issue_type_id),
+      issue_type_id: issueTypeId,
       response_target_minutes: Number(response_target_minutes) || 60,
       resolve_target_minutes: Number(resolve_target_minutes) || 1440,
       is_active: is_active === undefined ? true : !!is_active,
@@ -159,12 +151,12 @@ if (globalIssueTypeCheck) {
     await t.commit();
     
     // Fetch created SLA with associations
-    const createdSLA = await SLA.findByPk(sla.sla_id, {
+    const createdSLA = await ClientSLA.findByPk(sla.client_sla_id, {
       include: [
         {
-          model: User,
-          as: 'user',
-          attributes: ['user_id', 'username', 'first_name', 'last_name', 'email']
+          model: Client,
+          as: 'client',
+          attributes: ['client_id', 'company_name', 'contact_person', 'email']
         },
         {
           model: IssueType,
@@ -185,9 +177,14 @@ if (globalIssueTypeCheck) {
 exports.updateSLA = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = validateId(req.params.id);
+    
+    if (!id) {
+      return res.status(400).json({ message: 'Invalid SLA ID' });
+    }
+
     const {
-      user_id,
+      client_id,
       name,
       issue_type_id,
       response_target_minutes,
@@ -196,68 +193,84 @@ exports.updateSLA = async (req, res) => {
       updated_by
     } = req.body;
 
-    const sla = await SLA.findByPk(id, { transaction: t });
+    const sla = await ClientSLA.findByPk(id, { transaction: t });
     if (!sla) {
       await t.rollback();
       return res.status(404).json({ message: 'SLA not found' });
     }
 
-    // If user_id is being updated, verify the user exists
-    if (user_id && Number(user_id) !== sla.user_id) {
-      const user = await User.findByPk(user_id);
-      if (!user) {
+    // If client_id is being updated, verify the client exists
+    if (client_id) {
+      const clientId = validateId(client_id);
+      if (!clientId) {
         await t.rollback();
-        return res.status(404).json({ message: 'User not found' });
+        return res.status(400).json({ message: 'Valid client_id is required' });
       }
-      sla.user_id = Number(user_id);
+      
+      if (clientId !== sla.client_id) {
+        const client = await Client.findByPk(clientId);
+        if (!client) {
+          await t.rollback();
+          return res.status(404).json({ message: 'Client not found' });
+        }
+        sla.client_id = clientId;
+      }
     }
 
     // Check name uniqueness if name is being updated
     if (name && name.trim() !== sla.name) {
-      const existingNameSLA = await SLA.findOne({
+      const existingNameSLA = await ClientSLA.findOne({
         where: { 
-          user_id: sla.user_id, 
+          client_id: sla.client_id, 
           name: name.trim() 
         },
         transaction: t
       });
       
-      if (existingNameSLA && existingNameSLA.sla_id !== sla.sla_id) {
+      if (existingNameSLA && existingNameSLA.client_sla_id !== sla.client_sla_id) {
         await t.rollback();
         return res.status(409).json({ 
-          message: 'Another SLA with this name already exists for this user' 
+          message: 'Another SLA with this name already exists for this client' 
         });
       }
       sla.name = name.trim();
     }
 
-    if (issue_type_id && Number(issue_type_id) !== sla.issue_type_id) {
-      // Check if issue type exists and is active
-      const issueType = await IssueType.findOne({
-        where: { issue_type_id: Number(issue_type_id), is_active: true },
-        transaction: t
-      });
-      if (!issueType) {
+    if (issue_type_id) {
+      const issueTypeId = validateId(issue_type_id);
+      if (!issueTypeId) {
         await t.rollback();
-        return res.status(400).json({ message: 'Issue type not found or inactive' });
+        return res.status(400).json({ message: 'Valid issue_type_id is required' });
       }
 
-      // Check uniqueness for new user_id + issue_type_id combination
-      const existingIssueTypeSLA = await SLA.findOne({
-        where: { 
-          user_id: sla.user_id, 
-          issue_type_id: Number(issue_type_id) 
-        },
-        transaction: t
-      });
-      
-      if (existingIssueTypeSLA && existingIssueTypeSLA.sla_id !== sla.sla_id) {
-        await t.rollback();
-        return res.status(409).json({ 
-          message: 'Another SLA with this user and issue type already exists' 
+      if (issueTypeId !== sla.issue_type_id) {
+        // Check if issue type exists and is active
+        const issueType = await IssueType.findOne({
+          where: { issue_type_id: issueTypeId, is_active: true },
+          transaction: t
         });
+        if (!issueType) {
+          await t.rollback();
+          return res.status(400).json({ message: 'Issue type not found or inactive' });
+        }
+
+        // Check uniqueness for new client_id + issue_type_id combination
+        const existingIssueTypeSLA = await ClientSLA.findOne({
+          where: { 
+            client_id: sla.client_id, 
+            issue_type_id: issueTypeId 
+          },
+          transaction: t
+        });
+        
+        if (existingIssueTypeSLA && existingIssueTypeSLA.client_sla_id !== sla.client_sla_id) {
+          await t.rollback();
+          return res.status(409).json({ 
+            message: 'Another SLA with this client and issue type already exists' 
+          });
+        }
+        sla.issue_type_id = issueTypeId;
       }
-      sla.issue_type_id = Number(issue_type_id);
     }
 
     if (response_target_minutes !== undefined) {
@@ -274,12 +287,12 @@ exports.updateSLA = async (req, res) => {
     await t.commit();
 
     // Fetch updated SLA with associations
-    const updatedSLA = await SLA.findByPk(id, {
+    const updatedSLA = await ClientSLA.findByPk(id, {
       include: [
         {
-          model: User,
-          as: 'user',
-          attributes: ['user_id', 'username', 'first_name', 'last_name', 'email']
+          model: Client,
+          as: 'client',
+          attributes: ['client_id', 'company_name', 'contact_person', 'email']
         },
         {
           model: IssueType,
@@ -300,8 +313,13 @@ exports.updateSLA = async (req, res) => {
 exports.deleteSLA = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const id = parseInt(req.params.id, 10);
-    const sla = await SLA.findByPk(id, { transaction: t });
+    const id = validateId(req.params.id);
+    
+    if (!id) {
+      return res.status(400).json({ message: 'Invalid SLA ID' });
+    }
+
+    const sla = await ClientSLA.findByPk(id, { transaction: t });
     
     if (!sla) {
       await t.rollback();
@@ -310,7 +328,7 @@ exports.deleteSLA = async (req, res) => {
 
     // Check if SLA is being used by any tickets
     const ticketCount = await Ticket.count({
-      where: { sla_id: id },
+      where: { client_sla_id: id },
       transaction: t
     });
 
@@ -336,18 +354,22 @@ exports.deleteSLA = async (req, res) => {
   }
 };
 
-// Get SLAs by user ID
-exports.getSLAsByUser = async (req, res) => {
+// Get SLAs by client ID
+exports.getSLAsByClient = async (req, res) => {
   try {
-    const userId = parseInt(req.params.userId, 10);
+    const clientId = validateId(req.params.clientId);
     
-    const slas = await SLA.findAll({
-      where: { user_id: userId, is_active: true },
+    if (!clientId) {
+      return res.status(400).json({ message: 'Invalid client ID' });
+    }
+    
+    const slas = await ClientSLA.findAll({
+      where: { client_id: clientId, is_active: true },
       include: [
         {
-          model: User,
-          as: 'user',
-          attributes: ['user_id', 'username', 'first_name', 'last_name']
+          model: Client,
+          as: 'client',
+          attributes: ['client_id', 'company_name', 'contact_person', 'email']
         },
         {
           model: IssueType,
@@ -360,23 +382,23 @@ exports.getSLAsByUser = async (req, res) => {
 
     return res.json({ slas });
   } catch (err) {
-    console.error('getSLAsByUser', err);
+    console.error('getSLAsByClient', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
-// Get active users for SLA assignment
-exports.getUsersForSLA = async (req, res) => {
+// Get active clients for SLA assignment
+exports.getClientsForSLA = async (req, res) => {
   try {
-    const users = await User.findAll({
+    const clients = await Client.findAll({
       where: { is_active: true },
-      attributes: ['user_id', 'username', 'first_name', 'last_name', 'email'],
-      order: [['first_name', 'ASC']]
+      attributes: ['client_id', 'company_name', 'contact_person', 'email'],
+      order: [['client_id', 'ASC']]
     });
 
-    return res.json({ users });
+    return res.json({ clients });
   } catch (err) {
-    console.error('getUsersForSLA', err);
+    console.error('getClientsForSLA', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -397,19 +419,19 @@ exports.getIssueTypesForSLA = async (req, res) => {
   }
 };
 
-// Get available SLAs for an issue type and user
-exports.getUserSLAsForIssueType = async (req, res) => {
+// Get available SLAs for an issue type and client
+exports.getClientSLAsForIssueType = async (req, res) => {
   try {
-    const userId = parseInt(req.params.userId, 10);
-    const issueTypeId = parseInt(req.params.issueTypeId, 10);
+    const clientId = validateId(req.params.clientId);
+    const issueTypeId = validateId(req.params.issueTypeId);
     
-    if (!userId || !issueTypeId) {
-      return res.status(400).json({ message: 'User ID and Issue Type ID are required' });
+    if (!clientId || !issueTypeId) {
+      return res.status(400).json({ message: 'Valid Client ID and Issue Type ID are required' });
     }
 
-    const slas = await SLA.findAll({
+    const slas = await ClientSLA.findAll({
       where: { 
-        user_id: userId,
+        client_id: clientId,
         issue_type_id: issueTypeId,
         is_active: true 
       },
@@ -417,38 +439,38 @@ exports.getUserSLAsForIssueType = async (req, res) => {
     });
 
     return res.json({ 
-      user_id: userId,
+      client_id: clientId,
       issue_type_id: issueTypeId,
       slas: slas 
     });
   } catch (err) {
-    console.error('getUserSLAsForIssueType', err);
+    console.error('getClientSLAsForIssueType', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
-// Get primary SLA for user and issue type
-exports.getPrimarySLAForUserAndIssueType = async (req, res) => {
+// Get primary SLA for client and issue type
+exports.getPrimarySLAByClientAndIssueType = async (req, res) => {
   try {
-    const userId = parseInt(req.params.userId, 10);
-    const issueTypeId = parseInt(req.params.issueTypeId, 10);
+    const clientId = validateId(req.params.clientId);
+    const issueTypeId = validateId(req.params.issueTypeId);
 
-    if (!userId || !issueTypeId) {
-      return res.status(400).json({ message: 'User ID and Issue Type ID are required' });
+    if (!clientId || !issueTypeId) {
+      return res.status(400).json({ message: 'Valid Client ID and Issue Type ID are required' });
     }
 
     // Get the primary SLA
-    const sla = await SLA.findOne({
+    const sla = await ClientSLA.findOne({
       where: {
-        user_id: userId,
+        client_id: clientId,
         issue_type_id: issueTypeId,
         is_active: true
       },
       include: [
         {
-          model: User,
-          as: 'user',
-          attributes: ['user_id', 'username', 'first_name', 'last_name']
+          model: Client,
+          as: 'client',
+          attributes: ['client_id', 'company_name', 'contact_person', 'email']
         },
         {
           model: IssueType,
@@ -464,18 +486,18 @@ exports.getPrimarySLAForUserAndIssueType = async (req, res) => {
 
     if (!sla) {
       return res.status(404).json({ 
-        message: 'No active SLA found for this user and issue type combination',
-        user_id: userId,
+        message: 'No active SLA found for this client and issue type combination',
+        client_id: clientId,
         issue_type_id: issueTypeId
       });
     }
 
     return res.json({
-      user: {
-        user_id: sla.user.user_id,
-        username: sla.user.username,
-        first_name: sla.user.first_name,
-        last_name: sla.user.last_name
+      client: {
+        client_id: sla.client.client_id,
+        company_name: sla.client.company_name,
+        contact_person: sla.client.contact_person,
+        email: sla.client.email
       },
       issue_type: {
         issue_type_id: sla.issue_type.issue_type_id,
@@ -483,7 +505,7 @@ exports.getPrimarySLAForUserAndIssueType = async (req, res) => {
         description: sla.issue_type.description
       },
       sla: {
-        sla_id: sla.sla_id,
+        client_sla_id: sla.client_sla_id,
         name: sla.name,
         response_target_minutes: sla.response_target_minutes,
         resolve_target_minutes: sla.resolve_target_minutes,
@@ -492,7 +514,7 @@ exports.getPrimarySLAForUserAndIssueType = async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('getPrimarySLAForUserAndIssueType', err);
+    console.error('getPrimarySLAByClientAndIssueType', err);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };

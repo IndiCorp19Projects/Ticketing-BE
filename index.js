@@ -350,6 +350,10 @@ const escalationReportRoutes = require("./routes/escalationReportRoutes");
 const { Op } = require("sequelize");
 app.use("/api/escalation-reports", escalationReportRoutes);
 
+const clientRoutes = require('./routes/clientRoutes');
+app.use('/api/admin/clients', clientRoutes);
+
+
 app.get("/", (req, res) => res.send("Ticketing system API running"));
 
 app.use((err, req, res, next) => {
