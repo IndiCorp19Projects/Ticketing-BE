@@ -78,8 +78,6 @@ exports.logout = (req, res) => {
 };
 
 
-
-
 exports.me = async (req, res) => {
   try {
     const token = req.cookies.token;

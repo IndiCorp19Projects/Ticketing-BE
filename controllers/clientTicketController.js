@@ -110,6 +110,9 @@ async function getTicketDetails(req, res) {
       ]
     });
 
+
+    
+
     if (!ticket) {
       return res.status(404).json({
         success: false,
@@ -556,8 +559,6 @@ async function getTickets(req, res) {
 // }
 
 
-
-
 /**
  * Create Ticket (for Client User) chandrashekhar old
  */
@@ -729,8 +730,6 @@ if (isOtherIssueType && !clientSlaId) {
     });
   }
 }
-
-
 
 
 async function listTickets(req, res) {
@@ -1041,12 +1040,6 @@ async function escalateTicket(req, res) {
  * Reply to Ticket (Role-based permissions)
  */
 
-
-
-
-
-
-
 // async function replyToTicket(req, res) {
 //   const transaction = await sequelize.transaction();
 //   try {
@@ -1340,6 +1333,508 @@ async function escalateTicket(req, res) {
 
 
 
+// async function replyToTicket(req, res) {
+//   const transaction = await sequelize.transaction();
+//   try {
+//     const { ticketId } = req.params;
+//     const {
+//       message: rawMessage,
+//       screenshot_url,
+//       status,
+//       assigned_client_user_id,
+//       assigned_client_user_name,
+//       assigned_client_user_email
+//     } = req.body;
+//     const files = req.files && Array.isArray(req.files) ? req.files : [];
+
+//     if ((!rawMessage || String(rawMessage).trim() === '') && files.length === 0 && !screenshot_url && !assigned_client_user_id) {
+//       await transaction.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: 'At least one of message / files / screenshot_url / assignment is required'
+//       });
+//     }
+
+//     // Fetch ticket (with transaction)
+//     const ticket = await Ticket.findByPk(ticketId, { transaction });
+//     if (!ticket) {
+//       await transaction.rollback();
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Ticket not found'
+//       });
+//     }
+
+//     // Permission check
+//     if (!checkClientUserPermissions(req, ticket)) {
+//       await transaction.rollback();
+//       return res.status(403).json({
+//         success: false,
+//         message: 'Access denied to this ticket'
+//       });
+//     }
+
+//     const clientId = req.client.id;
+//     const clientUserName = req.client_user.name || req.client_user.username || `user-${req.client_user.id || req.client_user.client_user_id}`;
+
+//     // Handle assignment if provided
+//     let assignmentUpdated = false;
+//     if (assigned_client_user_id) {
+//       // Check if user is Client Admin for assignment
+//       if (req.client_user.role !== 'admin') {
+//         await transaction.rollback();
+//         return res.status(403).json({
+//           success: false,
+//           message: 'Only Client Admin can assign tickets'
+//         });
+//       }
+
+//       // Update assignment
+//       await ticket.update({
+//         assigned_client_user_id,
+//         assigned_client_user_name,
+//         assigned_client_user_email,
+//         last_updated_by: clientUserName,
+//         updated_at: new Date()
+//       }, { transaction });
+
+//       assignmentUpdated = true;
+//     }
+
+//     // Handle status update if provided
+//     let statusUpdated = false;
+//     let previousStatus = ticket.status;
+
+//     if (status && status === 'Closed' && ticket.status !== 'Closed') {
+//       // Validate that user can close the ticket
+//       if (ticket.status === 'Open' || ticket.status === 'Pending' || ticket.status === 'Resolved') {
+//         await ticket.update({
+//           status: 'Closed',
+//           prev_status: previousStatus,
+//           last_updated_by: clientUserName,
+//           updated_at: new Date()
+//         }, { transaction });
+//         statusUpdated = true;
+//       }
+//     }
+
+//     let reply = null;
+//     const createdDocsMeta = [];
+
+//     // ONLY CREATE REPLY IF USER PROVIDES EXPLICIT MESSAGE/FILES/SCREENSHOT
+//     // Remove all system message creation for assignments/status changes
+
+//     // Create user's reply only if there's a message, files, or screenshot
+//     const hasUserContent = (rawMessage && String(rawMessage).trim() !== '') || 
+//                           files.length > 0 || 
+//                           screenshot_url;
+
+//     if (hasUserContent) {
+//       let finalMessage = rawMessage || '';
+
+//       // Create the reply with user's content
+//       reply = await TicketReply.create({
+//         ticket_id: ticket.ticket_id,
+//         sender_id: clientId,
+//         sender_type: 'client',
+//         client_sender_name: req.client_user.name,
+//         message: finalMessage.trim()
+//       }, { transaction });
+
+//       // Handle files - attach to user reply
+//       if (files.length > 0) {
+//         const docsToCreate = files.map((file) => {
+//           const b64 = file.buffer ? file.buffer.toString('base64') : null;
+//           const mime = file.mimetype || 'application/octet-stream';
+//           const isImage = mime.startsWith('image/');
+//           return {
+//             linked_id: reply.reply_id,
+//             table_name: 'ticket_reply',
+//             type: isImage ? 'image' : 'attachment',
+//             doc_name: file.originalname || file.filename || 'upload',
+//             mime_type: mime,
+//             doc_base64: b64,
+//             created_by: clientUserName,
+//             status: 'active'
+//           };
+//         });
+//         const created = await Document.bulkCreate(docsToCreate, { transaction });
+//         created.forEach((d) => {
+//           createdDocsMeta.push({
+//             document_id: d.document_id,
+//             doc_name: d.doc_name,
+//             mime_type: d.mime_type,
+//             created_on: d.created_on
+//           });
+//         });
+//       }
+
+//       // Screenshot URL handling
+//       if (screenshot_url) {
+//         const dataUrl = String(screenshot_url);
+//         const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
+//         if (m) {
+//           const mimetype = m[1];
+//           const b64 = m[2];
+//           const doc = await Document.create({
+//             linked_id: reply.reply_id,
+//             table_name: 'ticket_reply',
+//             type: mimetype.startsWith('image/') ? 'image' : 'attachment',
+//             doc_name: req.body.screenshot_name ?? `screenshot.${(mimetype.split('/')[1] || 'png')}`,
+//             mime_type: mimetype,
+//             doc_base64: b64,
+//             created_by: clientUserName,
+//             status: 'active'
+//           }, { transaction });
+
+//           createdDocsMeta.push({
+//             document_id: doc.document_id,
+//             doc_name: doc.doc_name,
+//             mime_type: doc.mime_type,
+//             created_on: doc.created_on
+//           });
+//         }
+//       }
+//     }
+
+//     // Update ticket metadata if changes were made (assignment, status, or reply)
+//     if (assignmentUpdated || statusUpdated || hasUserContent) {
+//       ticket.updated_at = new Date();
+//       ticket.last_updated_by = clientUserName;
+//       await ticket.save({ transaction });
+//     }
+
+//     await transaction.commit();
+
+//     // Refresh ticket data for response
+//     const updatedTicket = await Ticket.findByPk(ticketId, {
+//       include: [
+//         {
+//           model: TicketReply,
+//           as: 'replies',
+//           include: [{
+//             model: Document,
+//             as: 'documents',
+//             attributes: ['document_id', 'doc_name', 'mime_type', 'created_on']
+//           }]
+//         },
+//         {
+//           model: ClientSLA,
+//           as: 'client_sla'
+//         }
+//       ]
+//     });
+
+//     // Notify admins async (only if there's an actual user reply)
+//     if (reply) {
+//       notifyAdminsTicketReply(updatedTicket, reply, req.client, clientUserName).catch(err => {
+//         console.error('notifyAdminsTicketReply error:', err);
+//       });
+//     }
+
+//     const ticketPlainFinal = updatedTicket.toJSON ? updatedTicket.toJSON() : updatedTicket;
+//     const { response_sla_met, resolve_sla_met, sla } = await computeClientSLACompliance(ticketPlainFinal);
+
+//     // Build success message based on actions performed
+//     let successMessage = 'Action completed successfully';
+//     if (assignmentUpdated && statusUpdated && hasUserContent) {
+//       successMessage = 'Ticket assigned, closed, and reply sent successfully';
+//     } else if (assignmentUpdated && statusUpdated) {
+//       successMessage = 'Ticket assigned and closed successfully';
+//     } else if (assignmentUpdated && hasUserContent) {
+//       successMessage = 'Ticket assigned and reply sent successfully';
+//     } else if (statusUpdated && hasUserContent) {
+//       successMessage = 'Reply sent and ticket closed successfully';
+//     } else if (assignmentUpdated) {
+//       successMessage = 'Ticket assigned successfully';
+//     } else if (statusUpdated) {
+//       successMessage = 'Ticket closed successfully';
+//     } else if (hasUserContent) {
+//       successMessage = 'Reply added successfully';
+//     }
+
+//     return res.status(201).json({
+//       success: true,
+//       message: successMessage,
+//       reply: reply, // Only user replies, no system replies
+//       documents: createdDocsMeta,
+//       assignment_updated: assignmentUpdated,
+//       status_updated: statusUpdated,
+//       ticket: {
+//         ...ticketPlainFinal,
+//         client_sla: sla,
+//         response_sla_met,
+//         resolve_sla_met
+//       }
+//     });
+
+//   } catch (error) {
+//     console.error('Client replyToTicket error:', error);
+//     try { await transaction.rollback(); } catch (e) { /* ignore */ }
+//     return res.status(500).json({
+//       success: false,
+//       message: 'Internal server error: ' + (error && error.message ? error.message : String(error))
+//     });
+//   }
+// }
+
+
+// async function replyToTicket(req, res) {
+//   const transaction = await sequelize.transaction();
+//   try {
+//     const { ticketId } = req.params;
+//     const {
+//       message: rawMessage,
+//       screenshot_url,
+//       status,
+//       assigned_client_user_id,
+//       assigned_client_user_name,
+//       assigned_client_user_email
+//     } = req.body;
+//     const files = req.files && Array.isArray(req.files) ? req.files : [];
+
+//     if ((!rawMessage || String(rawMessage).trim() === '') && files.length === 0 && !screenshot_url && !assigned_client_user_id) {
+//       await transaction.rollback();
+//       return res.status(400).json({
+//         success: false,
+//         message: 'At least one of message / files / screenshot_url / assignment is required'
+//       });
+//     }
+
+//     // Fetch ticket (with transaction)
+//     const ticket = await Ticket.findByPk(ticketId, { transaction });
+//     if (!ticket) {
+//       await transaction.rollback();
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Ticket not found'
+//       });
+//     }
+
+//     // Permission check
+//     if (!checkClientUserPermissions(req, ticket)) {
+//       await transaction.rollback();
+//       return res.status(403).json({
+//         success: false,
+//         message: 'Access denied to this ticket'
+//       });
+//     }
+
+//     const clientId = req.client.id;
+//     const clientUserName = req.client_user.name || req.client_user.username || `user-${req.client_user.id || req.client_user.client_user_id}`;
+
+//     // Handle assignment if provided
+//     let assignmentUpdated = false;
+//     let isDuplicateAssignment = false;
+    
+//     if (assigned_client_user_id) {
+//       // Check if user is Client Admin for assignment
+//       if (req.client_user.role !== 'admin') {
+//         await transaction.rollback();
+//         return res.status(403).json({
+//           success: false,
+//           message: 'Only Client Admin can assign tickets'
+//         });
+//       }
+
+//       // CHECK IF TICKET IS ALREADY ASSIGNED TO THE SAME CLIENT USER
+//       if (ticket.assigned_client_user_id === assigned_client_user_id) {
+//         // Ticket is already assigned to this user
+//         isDuplicateAssignment = true;
+//         assignmentUpdated = false;
+//       } else {
+//         // Update assignment since it's a different user
+//         await ticket.update({
+//           assigned_client_user_id,
+//           assigned_client_user_name,
+//           assigned_client_user_email,
+//           last_updated_by: clientUserName,
+//           updated_at: new Date()
+//         }, { transaction });
+
+//         assignmentUpdated = true;
+//         isDuplicateAssignment = false;
+//       }
+//     }
+
+//     // Handle status update if provided
+//     let statusUpdated = false;
+//     let previousStatus = ticket.status;
+
+//     if (status && status === 'Closed' && ticket.status !== 'Closed') {
+//       // Validate that user can close the ticket
+//       if (ticket.status === 'Open' || ticket.status === 'Pending' || ticket.status === 'Resolved') {
+//         await ticket.update({
+//           status: 'Closed',
+//           prev_status: previousStatus,
+//           last_updated_by: clientUserName,
+//           updated_at: new Date()
+//         }, { transaction });
+//         statusUpdated = true;
+//       }
+//     }
+
+//     let reply = null;
+//     const createdDocsMeta = [];
+
+//     // ONLY CREATE REPLY IF USER PROVIDES EXPLICIT MESSAGE/FILES/SCREENSHOT
+//     const hasUserContent = (rawMessage && String(rawMessage).trim() !== '') || 
+//                           files.length > 0 || 
+//                           screenshot_url;
+
+//     if (hasUserContent) {
+//       let finalMessage = rawMessage || '';
+
+//       // Create the reply with user's content
+//       reply = await TicketReply.create({
+//         ticket_id: ticket.ticket_id,
+//         sender_id: clientId,
+//         sender_type: 'client',
+//         client_sender_name: req.client_user.name,
+//         message: finalMessage.trim()
+//       }, { transaction });
+
+//       // Handle files - attach to user reply
+//       if (files.length > 0) {
+//         const docsToCreate = files.map((file) => {
+//           const b64 = file.buffer ? file.buffer.toString('base64') : null;
+//           const mime = file.mimetype || 'application/octet-stream';
+//           const isImage = mime.startsWith('image/');
+//           return {
+//             linked_id: reply.reply_id,
+//             table_name: 'ticket_reply',
+//             type: isImage ? 'image' : 'attachment',
+//             doc_name: file.originalname || file.filename || 'upload',
+//             mime_type: mime,
+//             doc_base64: b64,
+//             created_by: clientUserName,
+//             status: 'active'
+//           };
+//         });
+//         const created = await Document.bulkCreate(docsToCreate, { transaction });
+//         created.forEach((d) => {
+//           createdDocsMeta.push({
+//             document_id: d.document_id,
+//             doc_name: d.doc_name,
+//             mime_type: d.mime_type,
+//             created_on: d.created_on
+//           });
+//         });
+//       }
+
+//       // Screenshot URL handling
+//       if (screenshot_url) {
+//         const dataUrl = String(screenshot_url);
+//         const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
+//         if (m) {
+//           const mimetype = m[1];
+//           const b64 = m[2];
+//           const doc = await Document.create({
+//             linked_id: reply.reply_id,
+//             table_name: 'ticket_reply',
+//             type: mimetype.startsWith('image/') ? 'image' : 'attachment',
+//             doc_name: req.body.screenshot_name ?? `screenshot.${(mimetype.split('/')[1] || 'png')}`,
+//             mime_type: mimetype,
+//             doc_base64: b64,
+//             created_by: clientUserName,
+//             status: 'active'
+//           }, { transaction });
+
+//           createdDocsMeta.push({
+//             document_id: doc.document_id,
+//             doc_name: doc.doc_name,
+//             mime_type: doc.mime_type,
+//             created_on: doc.created_on
+//           });
+//         }
+//       }
+//     }
+
+//     // Update ticket metadata if changes were made (assignment, status, or reply)
+//     if (assignmentUpdated || statusUpdated || hasUserContent) {
+//       ticket.updated_at = new Date();
+//       ticket.last_updated_by = clientUserName;
+//       await ticket.save({ transaction });
+//     }
+
+//     await transaction.commit();
+
+//     // Refresh ticket data for response
+//     const updatedTicket = await Ticket.findByPk(ticketId, {
+//       include: [
+//         {
+//           model: TicketReply,
+//           as: 'replies',
+//           include: [{
+//             model: Document,
+//             as: 'documents',
+//             attributes: ['document_id', 'doc_name', 'mime_type', 'created_on']
+//           }]
+//         },
+//         {
+//           model: ClientSLA,
+//           as: 'client_sla'
+//         }
+//       ]
+//     });
+
+//     // Notify admins async (only if there's an actual user reply)
+//     if (reply) {
+//       notifyAdminsTicketReply(updatedTicket, reply, req.client, clientUserName).catch(err => {
+//         console.error('notifyAdminsTicketReply error:', err);
+//       });
+//     }
+
+//     const ticketPlainFinal = updatedTicket.toJSON ? updatedTicket.toJSON() : updatedTicket;
+//     const { response_sla_met, resolve_sla_met, sla } = await computeClientSLACompliance(ticketPlainFinal);
+
+//     // Build success message based on actions performed
+//     let successMessage = 'Action completed successfully';
+    
+//     if (isDuplicateAssignment) {
+//       successMessage = 'Ticket is already assigned to this user';
+//     } else if (assignmentUpdated && statusUpdated && hasUserContent) {
+//       successMessage = 'Ticket assigned, closed, and reply sent successfully';
+//     } else if (assignmentUpdated && statusUpdated) {
+//       successMessage = 'Ticket assigned and closed successfully';
+//     } else if (assignmentUpdated && hasUserContent) {
+//       successMessage = 'Ticket assigned and reply sent successfully';
+//     } else if (statusUpdated && hasUserContent) {
+//       successMessage = 'Reply sent and ticket closed successfully';
+//     } else if (assignmentUpdated) {
+//       successMessage = 'Ticket assigned successfully';
+//     } else if (statusUpdated) {
+//       successMessage = 'Ticket closed successfully';
+//     } else if (hasUserContent) {
+//       successMessage = 'Reply added successfully';
+//     }
+
+//     return res.status(201).json({
+//       success: true,
+//       message: successMessage,
+//       reply: reply, // Only user replies, no system replies
+//       documents: createdDocsMeta,
+//       assignment_updated: assignmentUpdated,
+//       duplicate_assignment: isDuplicateAssignment, // Add this flag to response
+//       status_updated: statusUpdated,
+//       ticket: {
+//         ...ticketPlainFinal,
+//         client_sla: sla,
+//         response_sla_met,
+//         resolve_sla_met
+//       }
+//     });
+
+//   } catch (error) {
+//     console.error('Client replyToTicket error:', error);
+//     try { await transaction.rollback(); } catch (e) { /* ignore */ }
+//     return res.status(500).json({
+//       success: false,
+//       message: 'Internal server error: ' + (error && error.message ? error.message : String(error))
+//     });
+//   }
+// }
+
 async function replyToTicket(req, res) {
   const transaction = await sequelize.transaction();
   try {
@@ -1386,6 +1881,8 @@ async function replyToTicket(req, res) {
 
     // Handle assignment if provided
     let assignmentUpdated = false;
+    let isDuplicateAssignment = false;
+    
     if (assigned_client_user_id) {
       // Check if user is Client Admin for assignment
       if (req.client_user.role !== 'admin') {
@@ -1396,16 +1893,42 @@ async function replyToTicket(req, res) {
         });
       }
 
-      // Update assignment
-      await ticket.update({
-        assigned_client_user_id,
-        assigned_client_user_name,
-        assigned_client_user_email,
-        last_updated_by: clientUserName,
-        updated_at: new Date()
-      }, { transaction });
+      // CHECK IF TICKET IS ALREADY ASSIGNED TO SOMEONE
+      if (ticket.assigned_client_user_id) {
+        // Ticket is already assigned to someone, check if it's the same person
+        if (ticket.assigned_client_user_id === assigned_client_user_id) {
+          // Ticket is already assigned to this same user - DON'T ALLOW
+          await transaction.rollback();
+          return res.status(400).json({
+            success: false,
+            message: 'Ticket is already assigned to this user'
+          });
+        } else {
+          // Ticket is assigned to a DIFFERENT user - ALLOW reassignment
+          await ticket.update({
+            assigned_client_user_id,
+            assigned_client_user_name,
+            assigned_client_user_email,
+            last_updated_by: clientUserName,
+            updated_at: new Date()
+          }, { transaction });
 
-      assignmentUpdated = true;
+          assignmentUpdated = true;
+          isDuplicateAssignment = false;
+        }
+      } else {
+        // Ticket is not assigned to anyone - ALLOW assignment
+        await ticket.update({
+          assigned_client_user_id,
+          assigned_client_user_name,
+          assigned_client_user_email,
+          last_updated_by: clientUserName,
+          updated_at: new Date()
+        }, { transaction });
+
+        assignmentUpdated = true;
+        isDuplicateAssignment = false;
+      }
     }
 
     // Handle status update if provided
@@ -1429,9 +1952,6 @@ async function replyToTicket(req, res) {
     const createdDocsMeta = [];
 
     // ONLY CREATE REPLY IF USER PROVIDES EXPLICIT MESSAGE/FILES/SCREENSHOT
-    // Remove all system message creation for assignments/status changes
-
-    // Create user's reply only if there's a message, files, or screenshot
     const hasUserContent = (rawMessage && String(rawMessage).trim() !== '') || 
                           files.length > 0 || 
                           screenshot_url;
@@ -1544,6 +2064,7 @@ async function replyToTicket(req, res) {
 
     // Build success message based on actions performed
     let successMessage = 'Action completed successfully';
+    
     if (assignmentUpdated && statusUpdated && hasUserContent) {
       successMessage = 'Ticket assigned, closed, and reply sent successfully';
     } else if (assignmentUpdated && statusUpdated) {
@@ -1584,7 +2105,6 @@ async function replyToTicket(req, res) {
     });
   }
 }
-
 /**
  * Get Ticket Details
  */
@@ -1651,7 +2171,8 @@ async function getTicketDetails(req, res) {
           };
         }
       }
-      plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      // plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      plain.replies.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     }
 
     const { response_sla_met, resolve_sla_met, sla } = await computeClientSLACompliance(plain);
