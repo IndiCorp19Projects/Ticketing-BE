@@ -21,4 +21,7 @@ router.get('/admin/all', ticketController.adminGetAllTickets);
 router.get('/executive/my', ticketController.execGetAssignedTickets);
 router.put('/:ticketId/priority', ticketController.updateTicketPriority);
 
+router.get('/ticket/log/:ticketId', ticketController.getTicketChangeLogs);
+
+
 module.exports = router;

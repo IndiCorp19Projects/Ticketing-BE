@@ -13,4 +13,6 @@ router.get('/:ticketId', clientTicketController.getTicketById);
 router.post('/:ticketId/reply', upload.array('files'), clientTicketController.replyToTicket);
 router.put('/:ticketId/assign-user', clientTicketController.assignToClientUser);
 
+router.get('/ticket/log/:ticketId', clientTicketController.getTicketChangeLogs);
+
 module.exports = router;

@@ -46,6 +46,14 @@ const clientCredentialsTemplate = ({ client, password, adminName = 'Admin' }) =>
               <strong>${escapeHtml(password)}</strong>
             </td>
           </tr>
+          <tr>
+            <td style="padding: 8px 0; font-weight: bold;">Max File Size:</td>
+            <td style="padding: 8px 0;">${client.allowed_file_size || 10} MB</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; font-weight: bold;">Auto Close Timer:</td>
+            <td style="padding: 8px 0;">${client.ticket_auto_close_timer || 7} days</td>
+          </tr>
         </table>
       </div>
       
@@ -55,6 +63,8 @@ const clientCredentialsTemplate = ({ client, password, adminName = 'Admin' }) =>
           <li>Use the credentials above to login at: <strong>${process.env.CLIENT_APP_URL || process.env.APP_URL || 'http://localhost:3000'}/client/login</strong></li>
           <li>After login, you can raise tickets and track their status</li>
           <li>View your ticket history and communicate with support team</li>
+          <li>Maximum file upload size: <strong>${client.allowed_file_size || 10} MB</strong></li>
+          <li>Resolved tickets auto-close after: <strong>${client.ticket_auto_close_timer || 7} days</strong></li>
         </ol>
       </div>
       
@@ -72,6 +82,7 @@ const clientCredentialsTemplate = ({ client, password, adminName = 'Admin' }) =>
         <li>Communicate with support team</li>
         <li>View ticket history and resolutions</li>
         <li>Update your company profile</li>
+        <li>Upload files up to ${client.allowed_file_size || 10} MB</li>
       </ul>
       
       <p>
@@ -102,6 +113,8 @@ const clientCredentialsTemplate = ({ client, password, adminName = 'Admin' }) =>
     Contact Person: ${client.contact_person || 'N/A'}
     Login Email: ${client.email}
     Password: ${password}
+    Max File Size: ${client.allowed_file_size || 10} MB
+    Auto Close Timer: ${client.ticket_auto_close_timer || 7} days
     
     Login URL: ${process.env.CLIENT_APP_URL || process.env.APP_URL || 'http://localhost:3000'}/client/login
     
@@ -109,6 +122,8 @@ const clientCredentialsTemplate = ({ client, password, adminName = 'Admin' }) =>
     1. Use the credentials above to login
     2. After login, you can raise tickets and track their status
     3. View your ticket history and communicate with support team
+    4. Maximum file upload size: ${client.allowed_file_size || 10} MB
+    5. Resolved tickets auto-close after: ${client.ticket_auto_close_timer || 7} days
     
     WHAT YOU CAN DO:
     - Raise new support tickets
@@ -116,6 +131,7 @@ const clientCredentialsTemplate = ({ client, password, adminName = 'Admin' }) =>
     - Communicate with support team
     - View ticket history and resolutions
     - Update your company profile
+    - Upload files up to ${client.allowed_file_size || 10} MB
     
     SECURITY NOTICE: 
     For security reasons, please change your password after first login.
@@ -141,6 +157,12 @@ const clientUpdateTemplate = ({ client, updates, adminName = 'Admin' }) => {
   }
   if (updates.password) {
     updateDetails += `<li><strong>Password:</strong> Has been updated</li>`;
+  }
+  if (updates.allowed_file_size !== undefined) {
+    updateDetails += `<li><strong>Max File Size:</strong> ${updates.allowed_file_size} MB</li>`;
+  }
+  if (updates.ticket_auto_close_timer !== undefined) {
+    updateDetails += `<li><strong>Auto Close Timer:</strong> ${updates.ticket_auto_close_timer} days</li>`;
   }
   
   const html = `
@@ -188,6 +210,8 @@ const clientUpdateTemplate = ({ client, updates, adminName = 'Admin' }) => {
     
     ${updates.email ? `Login Email: ${updates.email}` : ''}
     ${updates.password ? `Password: Has been updated` : ''}
+    ${updates.allowed_file_size !== undefined ? `Max File Size: ${updates.allowed_file_size} MB` : ''}
+    ${updates.ticket_auto_close_timer !== undefined ? `Auto Close Timer: ${updates.ticket_auto_close_timer} days` : ''}
     
     Login URL: ${process.env.CLIENT_APP_URL || process.env.APP_URL || 'http://localhost:3000'}/client/login
     
@@ -330,7 +354,9 @@ exports.createClient = async (req, res) => {
       phone,
       address,
       is_active,
-      sendCredentials = true // New flag to control email sending
+      allowed_file_size = 10, // NEW FIELD with default
+      ticket_auto_close_timer = 7, // NEW FIELD with default
+      sendCredentials = true
     } = req.body;
 
     // Validation
@@ -347,6 +373,17 @@ exports.createClient = async (req, res) => {
     if (!password || password.trim() === '') {
       await t.rollback();
       return res.status(400).json({ message: 'Password is required' });
+    }
+
+    // Validate new fields
+    if (allowed_file_size && (allowed_file_size < 1 || allowed_file_size > 100)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Allowed file size must be between 1 and 100 MB' });
+    }
+
+    if (ticket_auto_close_timer && (ticket_auto_close_timer < 1 || ticket_auto_close_timer > 365)) {
+      await t.rollback();
+      return res.status(400).json({ message: 'Ticket auto close timer must be between 1 and 365 days' });
     }
 
     // Check if email already exists
@@ -369,7 +406,10 @@ exports.createClient = async (req, res) => {
       phone: phone?.trim() || null,
       address: address?.trim() || null,
       is_active: is_active === undefined ? true : !!is_active,
-      registration_date: new Date()
+      registration_date: new Date(),
+      // NEW FIELDS
+      allowed_file_size: allowed_file_size,
+      ticket_auto_close_timer: ticket_auto_close_timer
     }, { transaction: t });
 
     await t.commit();
@@ -422,7 +462,9 @@ exports.updateClient = async (req, res) => {
       phone,
       address,
       is_active,
-      notifyClient = false // New flag to notify client about updates
+      allowed_file_size, // NEW FIELD
+      ticket_auto_close_timer, // NEW FIELD
+      notifyClient = false
     } = req.body;
 
     const client = await Client.findByPk(id, { transaction: t });
@@ -434,6 +476,8 @@ exports.updateClient = async (req, res) => {
     const updates = {};
     let passwordChanged = false;
     let emailChanged = false;
+    let fileSizeChanged = false;
+    let autoCloseChanged = false;
 
     // Check email uniqueness if email is being updated
     if (email && email.trim().toLowerCase() !== client.email) {
@@ -479,6 +523,27 @@ exports.updateClient = async (req, res) => {
       client.is_active = !!is_active;
     }
 
+    // NEW FIELDS UPDATE LOGIC
+    if (allowed_file_size !== undefined) {
+      if (allowed_file_size < 1 || allowed_file_size > 100) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Allowed file size must be between 1 and 100 MB' });
+      }
+      client.allowed_file_size = allowed_file_size;
+      updates.allowed_file_size = allowed_file_size;
+      fileSizeChanged = true;
+    }
+
+    if (ticket_auto_close_timer !== undefined) {
+      if (ticket_auto_close_timer < 1 || ticket_auto_close_timer > 365) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Ticket auto close timer must be between 1 and 365 days' });
+      }
+      client.ticket_auto_close_timer = ticket_auto_close_timer;
+      updates.ticket_auto_close_timer = ticket_auto_close_timer;
+      autoCloseChanged = true;
+    }
+
     client.last_login_date = client.last_login_date; // Keep existing value
 
     await client.save({ transaction: t });
@@ -491,7 +556,7 @@ exports.updateClient = async (req, res) => {
 
     // Send update notification if requested and there are relevant changes
     let emailResult = null;
-    if (notifyClient && (emailChanged || passwordChanged)) {
+    if (notifyClient && (emailChanged || passwordChanged || fileSizeChanged || autoCloseChanged)) {
       emailResult = await sendClientUpdateEmail(updatedClient, updates);
     }
 
@@ -622,7 +687,10 @@ exports.getClientStats = async (req, res) => {
         contact_person: client.contact_person,
         email: client.email,
         registration_date: client.registration_date,
-        last_login_date: client.last_login_date
+        last_login_date: client.last_login_date,
+        // NEW FIELDS IN STATS
+        allowed_file_size: client.allowed_file_size,
+        ticket_auto_close_timer: client.ticket_auto_close_timer
       },
       tickets: ticketStats[0] || {
         total_tickets: 0,
@@ -661,7 +729,7 @@ exports.resendCredentials = async (req, res) => {
       return res.status(404).json({ message: 'Client not found' });
     }
 
-    // Generate a temporary password (you might want to implement a proper password reset flow)
+    // Generate a temporary password
     const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
     
     // Update client with new password
@@ -686,6 +754,128 @@ exports.resendCredentials = async (req, res) => {
     }
   } catch (err) {
     console.error('resendCredentials', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// New endpoint to get client settings (for external use)
+exports.getClientSettings = async (req, res) => {
+  try {
+    const id = validateId(req.params.id);
+    
+    if (!id) {
+      return res.status(400).json({ message: 'Invalid client ID' });
+    }
+
+    const client = await Client.findByPk(id, {
+      attributes: [
+        'client_id', 
+        'company_name', 
+        'allowed_file_size', 
+        'ticket_auto_close_timer',
+        'is_active'
+      ]
+    });
+    
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    if (!client.is_active) {
+      return res.status(400).json({ message: 'Client account is inactive' });
+    }
+
+    const settings = {
+      client_id: client.client_id,
+      company_name: client.company_name,
+      allowed_file_size: client.allowed_file_size,
+      ticket_auto_close_timer: client.ticket_auto_close_timer,
+      max_file_size_bytes: (client.allowed_file_size || 10) * 1024 * 1024 // Convert MB to bytes
+    };
+
+    return res.json({ settings });
+  } catch (err) {
+    console.error('getClientSettings', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// New endpoint to update only client settings
+exports.updateClientSettings = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const id = validateId(req.params.id);
+    
+    if (!id) {
+      return res.status(400).json({ message: 'Invalid client ID' });
+    }
+
+    const {
+      allowed_file_size,
+      ticket_auto_close_timer,
+      notifyClient = false
+    } = req.body;
+
+    const client = await Client.findByPk(id, { transaction: t });
+    if (!client) {
+      await t.rollback();
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    const updates = {};
+    let fileSizeChanged = false;
+    let autoCloseChanged = false;
+
+    // Validate and update allowed_file_size
+    if (allowed_file_size !== undefined) {
+      if (allowed_file_size < 1 || allowed_file_size > 100) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Allowed file size must be between 1 and 100 MB' });
+      }
+      client.allowed_file_size = allowed_file_size;
+      updates.allowed_file_size = allowed_file_size;
+      fileSizeChanged = true;
+    }
+
+    // Validate and update ticket_auto_close_timer
+    if (ticket_auto_close_timer !== undefined) {
+      if (ticket_auto_close_timer < 1 || ticket_auto_close_timer > 365) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Ticket auto close timer must be between 1 and 365 days' });
+      }
+      client.ticket_auto_close_timer = ticket_auto_close_timer;
+      updates.ticket_auto_close_timer = ticket_auto_close_timer;
+      autoCloseChanged = true;
+    }
+
+    await client.save({ transaction: t });
+    await t.commit();
+
+    // Send update notification if requested and there are changes
+    let emailResult = null;
+    if (notifyClient && (fileSizeChanged || autoCloseChanged)) {
+      emailResult = await sendClientUpdateEmail(client, updates);
+    }
+
+    const response = { 
+      message: 'Client settings updated successfully',
+      settings: {
+        allowed_file_size: client.allowed_file_size,
+        ticket_auto_close_timer: client.ticket_auto_close_timer
+      }
+    };
+
+    if (emailResult) {
+      response.emailSent = emailResult.success;
+      if (!emailResult.success) {
+        response.warning = 'Settings updated but failed to send notification email';
+      }
+    }
+
+    return res.json(response);
+  } catch (err) {
+    console.error('updateClientSettings', err);
+    try { await t.rollback(); } catch (_) {}
     return res.status(500).json({ message: 'Internal server error' });
   }
 };

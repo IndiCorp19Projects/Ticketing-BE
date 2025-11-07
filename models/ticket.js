@@ -33,7 +33,7 @@ module.exports = (sequelize, DataTypes) => {
       comment: { type: DataTypes.TEXT, allowNull: false },
       screenshot_url: { type: DataTypes.BLOB('long'), allowNull: true },
       status: {
-        type: DataTypes.ENUM('Open', 'Pending', 'Resolved', 'Closed'),
+        type: DataTypes.ENUM('Open', 'Pending', 'Resolved', 'Closed','Reopen','Cancel'),
         defaultValue: 'Open'
       },
       prev_status: { type: DataTypes.STRING(100), allowNull: true },
@@ -91,6 +91,15 @@ module.exports = (sequelize, DataTypes) => {
       current_escalation_id: {
         type: DataTypes.INTEGER,
         allowNull: true
+      },
+      owner_by: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+      },
+      ticket_total_file_size: {
+        type: DataTypes.DECIMAL(10, 0),
+        allowNull: false,
+        defaultValue: 0, // Default 10 MB
       },
     },
     {

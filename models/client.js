@@ -46,6 +46,19 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DATE,
         allowNull: true,
       },
+      // NEW FIELDS
+      allowed_file_size: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 10, // Default 10 MB
+        comment: 'Maximum allowed file size in MB for uploads'
+      },
+      ticket_auto_close_timer: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 7, // Default 7 days
+        comment: 'Auto close tickets after X days of resolution'
+      }
     },
     {
       tableName: 'client',
@@ -67,19 +80,18 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
-Client.associate = (models) => {
-  Client.hasMany(models.Ticket, { foreignKey: 'client_id', as: 'tickets' });
-  Client.hasMany(models.ClientSLA, { foreignKey: 'client_id', as: 'slas' });
-  // ADD this association
-  Client.hasMany(models.TicketReply, { 
-    foreignKey: 'sender_id', 
-    as: 'sentReplies',
-    constraints: false,
-    scope: {
-      sender_type: 'client'
-    }
-  });
-};
+  Client.associate = (models) => {
+    Client.hasMany(models.Ticket, { foreignKey: 'client_id', as: 'tickets' });
+    Client.hasMany(models.ClientSLA, { foreignKey: 'client_id', as: 'slas' });
+    Client.hasMany(models.TicketReply, { 
+      foreignKey: 'sender_id', 
+      as: 'sentReplies',
+      constraints: false,
+      scope: {
+        sender_type: 'client'
+      }
+    });
+  };
 
   return Client;
 };

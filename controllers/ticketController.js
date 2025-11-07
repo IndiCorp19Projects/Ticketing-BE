@@ -1026,6 +1026,827 @@ exports.raiseTicket = async (req, res) => {
 // Admin request close
 
 
+// exports.replyToTicket = async (req, res) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     const { ticketId } = req.params;
+//     const {
+//       message: rawMessage,
+//       status: requestedStatus,
+//       screenshot_url,
+//       assigned_to,
+//       priority: requestedPriority
+//     } = req.body;
+
+//     const files = req.files && Array.isArray(req.files) ? req.files : [];
+
+//     // ========== FIXED: PROPER AUTHENTICATION HANDLING ==========
+//     let sender_type = 'user';
+//     let senderId = null;
+//     let senderName = null;
+//     let senderEmail = null;
+
+//     console.log('Authentication debug:', {
+//       hasUser: !!req.user,
+//       hasClient: !!req.client,
+//       user: req.user ? { id: req.user.id, username: req.user.username } : null,
+//       client: req.client ? { id: req.client.id, company_name: req.client.company_name } : null
+//     });
+
+//     // Check client first, but only if it has valid data
+//     if (req.client && req.client.id && req.client.company_name) {
+//       sender_type = 'client';
+//       senderId = req.client.id;
+//       senderName = req.client.company_name;
+//       senderEmail = req.client.email;
+//       console.log(`Client reply - Client ID: ${senderId}, Name: ${senderName}`);
+//     }
+//     // Then check user
+//     else if (req.user && req.user.id && req.user.username) {
+//       const role = req.user.role_name;
+//       if (role === 'admin' || role === 'executive') {
+//         sender_type = 'admin';
+//       } else {
+//         sender_type = 'user';
+//       }
+//       senderId = req.user.id || req.user.user_id;
+//       senderName = req.user.username;
+//       senderEmail = req.user.email;
+//       console.log(`User reply - User ID: ${senderId}, Role: ${role}, Name: ${senderName}`);
+//     } else {
+//       await t.rollback();
+//       return res.status(401).json({ message: 'Unauthorized - No valid authentication found' });
+//     }
+
+//     // Validate senderId exists
+//     if (!senderId || !senderName) {
+//       await t.rollback();
+//       console.error('Invalid sender data:', { senderId, senderName, reqUser: req.user, reqClient: req.client });
+//       return res.status(400).json({ message: 'Unable to determine sender identity' });
+//     }
+//     // ========== END FIX ==========
+
+//     const isAdminSender = req.user && req.user.role_name === 'admin';
+//     const hasAssignAction = (assigned_to !== undefined && assigned_to !== null && String(assigned_to).trim() !== '');
+//     const hasPriorityAction = (requestedPriority !== undefined && requestedPriority !== null && String(requestedPriority).trim() !== '');
+
+//     if (
+//       (!rawMessage || String(rawMessage).trim() === '') &&
+//       files.length === 0 &&
+//       !requestedStatus &&
+//       !screenshot_url &&
+//       !(isAdminSender && hasAssignAction) &&
+//       !(isAdminSender && hasPriorityAction)
+//     ) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         message: 'At least one of message / files / status / screenshot_url / assigned_to (admin) / priority (admin) is required'
+//       });
+//     }
+
+//     const ticket = await Ticket.findByPk(ticketId, { transaction: t });
+//     if (!ticket) {
+//       await t.rollback();
+//       return res.status(404).json({ message: 'Ticket not found' });
+//     }
+
+//     // Permission check
+//     if (!(await ensureCanReply(req, ticket))) {
+//       await t.rollback();
+//       return res.status(403).json({ message: 'Forbidden' });
+//     }
+
+//     // ========== NEW CHECK: PREVENT ASSIGNING TO SAME USER ==========
+//     if (isAdminSender && hasAssignAction) {
+//       const assignedId = parseInt(assigned_to, 10);
+//       if (Number.isNaN(assignedId)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: 'Invalid assigned_to value' });
+//       }
+
+//       // Check if ticket is already assigned to the same user
+//       if (ticket.assigned_to === assignedId) {
+//         await t.rollback();
+//         return res.status(400).json({
+//           message: 'Ticket is already assigned to this user'
+//         });
+//       }
+
+//       const execUser = await User.findByPk(assignedId, { transaction: t });
+//       if (!execUser) {
+//         await t.rollback();
+//         return res.status(400).json({ message: 'Assignee user not found' });
+//       }
+//       if (execUser.role_name !== 'executive') {
+//         await t.rollback();
+//         return res.status(400).json({ message: 'Assignee must be an executive' });
+//       }
+//     }
+//     // ========== END NEW CHECK ==========
+
+//     // Only these statuses are allowed
+//     const allowedStatuses = ['Open', 'Pending', 'Resolved', 'Closed'];
+//     let statusChanged = false;
+//     let newStatus = undefined;
+//     if (requestedStatus) {
+//       newStatus = String(requestedStatus).trim();
+//       if (!allowedStatuses.includes(newStatus)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
+//       }
+//       if (ticket.status !== newStatus) statusChanged = true;
+//     }
+
+//     // Priority update logic (admin only)
+//     let priorityChanged = false;
+//     let newPriority = undefined;
+//     if (isAdminSender && hasPriorityAction) {
+//       newPriority = String(requestedPriority).trim();
+
+//       const validPriorities = ['low', 'medium', 'high', 'critical', 'urgent'];
+//       if (!validPriorities.includes(newPriority)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: `Invalid priority. Allowed: ${validPriorities.join(', ')}` });
+//       }
+
+//       if (ticket.priority !== newPriority) priorityChanged = true;
+//     }
+
+//     const now = new Date();
+
+//     // If admin replies for the first time -> set response_at & response_time_seconds
+//     if (req.user && req.user.role_name === 'admin' && !ticket.response_at) {
+//       ticket.response_at = now;
+//       const responseTime = await calculateWorkingHours(ticket.created_at, now);
+
+//       console.log("responseTime", responseTime, ticket.created_at, now);
+//       ticket.response_time_seconds = responseTime?.totalWorkingHours;
+//       ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+//     }
+
+//     // If admin provided assigned_to, handle assignment (only admin allowed)
+//     if (isAdminSender && hasAssignAction) {
+//       const assignedId = parseInt(assigned_to, 10);
+
+//       // Note: We already validated assignedId and user existence above
+//       ticket.assigned_to = assignedId;
+//       ticket.last_updated_by = req.user.username ?? String(senderId);
+//       ticket.updated_at = now;
+//     }
+
+//     // Apply priority change (admin only)
+//     if (priorityChanged && newPriority) {
+//       ticket.priority = newPriority;
+//       ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+//       ticket.updated_at = now;
+//     }
+
+//     // Apply status change
+//     if (statusChanged && newStatus) {
+//       ticket.prev_status = ticket.status;
+//       ticket.status = newStatus;
+//       ticket.last_updated_by = senderName ?? String(senderId);
+//       ticket.updated_at = now;
+
+//       if ((newStatus === 'Resolved' || newStatus === 'Closed') && !ticket.resolved_at) {
+//         ticket.resolved_at = now;
+
+//         const responseTime = await calculateWorkingHours(ticket.created_at, now);
+//         //ticket.resolve_time_seconds = secondsBetween(ticket.created_at, now);
+
+
+//         console.log(responseTime, ticket.created_at, now, "for responce")
+//         ticket.resolve_time_seconds = responseTime?.totalWorkingHours
+//       }
+//     } else {
+//       // Update last_updated_by and updated_at even if only priority changed
+//       if (req.user && req.user.role_name === 'admin') {
+//         ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+//       }
+//       ticket.updated_at = now;
+//     }
+
+//     // Persist ticket changes
+//     await ticket.save({ transaction: t });
+
+//     // ========== FIXED: CREATE REPLY WITH PROPER SENDER_ID ==========
+//     let reply = null;
+//     if (rawMessage && String(rawMessage).trim() !== '') {
+//       reply = await TicketReply.create({
+//         ticket_id: ticket.ticket_id ?? ticket.id,
+//         sender_id: senderId,
+//         sender_type: sender_type,
+//         client_sender_name: req?.user?.username,
+//         message: rawMessage ?? ''
+//       }, { transaction: t });
+//       console.log(`Created reply with sender_id: ${senderId}, sender_type: ${sender_type}`);
+//     }
+
+//     // Handle file uploads
+//     const createdDocsMeta = [];
+//     if (files.length > 0) {
+//       let replyToAttach = reply;
+//       if (!replyToAttach) {
+//         replyToAttach = await TicketReply.create({
+//           ticket_id: ticket.ticket_id ?? ticket.id,
+//           sender_id: senderId,
+//           sender_type: sender_type,
+//           client_sender_name: req?.user?.username,
+//           message: ''
+//         }, { transaction: t });
+//       }
+
+//       const docsToCreate = files.map((file) => {
+//         const b64 = file.buffer ? file.buffer.toString('base64') : null;
+//         const mime = file.mimetype || 'application/octet-stream';
+//         const isImage = mime.startsWith('image/');
+//         return {
+//           linked_id: replyToAttach.reply_id,
+//           table_name: 'ticket_reply',
+//           type: isImage ? 'image' : 'attachment',
+//           doc_name: file.originalname || file.filename || 'upload',
+//           mime_type: mime,
+//           doc_base64: b64,
+//           created_by: senderName ?? String(senderId),
+//           status: 'active'
+//         };
+//       });
+//       const created = await Document.bulkCreate(docsToCreate, { transaction: t });
+//       created.forEach((d) => {
+//         createdDocsMeta.push({
+//           document_id: d.document_id ?? d.id ?? null,
+//           doc_name: d.doc_name,
+//           mime_type: d.mime_type,
+//           created_on: d.created_on
+//         });
+//       });
+//     } else if (screenshot_url) {
+//       const dataUrl = String(screenshot_url);
+//       const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
+//       if (m) {
+//         const mimetype = m[1];
+//         const b64 = m[2];
+//         let replyToAttach = reply;
+//         if (!replyToAttach) {
+//           replyToAttach = await TicketReply.create({
+//             ticket_id: ticket.ticket_id ?? ticket.id,
+//             sender_id: senderId,
+//             sender_type: sender_type,
+//             client_sender_name: req?.user?.username,
+//             message: ''
+//           }, { transaction: t });
+//         }
+
+//         const doc = await Document.create({
+//           linked_id: replyToAttach.reply_id,
+//           table_name: 'ticket_reply',
+//           type: mimetype.startsWith('image/') ? 'image' : 'attachment',
+//           doc_name: req.body.screenshot_name ?? `upload.${(mimetype.split('/')[1] || 'bin')}`,
+//           mime_type: mimetype,
+//           doc_base64: b64,
+//           created_by: senderName ?? String(senderId),
+//           status: 'active'
+//         }, { transaction: t });
+
+//         createdDocsMeta.push({
+//           document_id: doc.document_id ?? doc.id ?? null,
+//           doc_name: doc.doc_name,
+//           mime_type: doc.mime_type,
+//           created_on: doc.created_on
+//         });
+//       }
+//     }
+
+//     await t.commit();
+
+//     // Notifications (simplified for now)
+//     (async () => {
+//       try {
+//         const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+//         const replyPlain = reply ? (reply.toJSON ? reply.toJSON() : reply) : null;
+
+//         // Your notification logic here...
+
+//       } catch (mailErr) {
+//         console.error('Mail error:', mailErr);
+//       }
+//     })();
+
+//     // Prepare response
+//     const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+
+//     // Fetch ticket-level documents if any
+//     const ticketDocs = await Document.findAll({
+//       where: { linked_id: ticket.ticket_id, table_name: 'ticket' },
+//       attributes: ['document_id', 'doc_name', 'mime_type', 'created_on']
+//     });
+
+//     // Attach assignee object if assigned
+//     let assigneeObj = null;
+//     if (ticketPlain.assigned_to) {
+//       const assigneeUser = await User.findByPk(ticketPlain.assigned_to);
+//       if (assigneeUser) {
+//         assigneeObj = {
+//           user_id: assigneeUser.user_id,
+//           username: assigneeUser.username,
+//           email: assigneeUser.email
+//         };
+//       }
+//     }
+
+//     const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(ticketPlain);
+
+//     return res.status(201).json({
+//       message: 'Reply added successfully',
+//       reply: reply,
+//       documents: createdDocsMeta,
+//       ticket: {
+//         ...ticketPlain,
+//         ticket_documents: ticketDocs.map(d => (d.toJSON ? d.toJSON() : d)),
+//         assignee: assigneeObj,
+//         sla,
+//         response_sla_met,
+//         resolve_sla_met
+//       }
+//     });
+//   } catch (err) {
+//     console.error('replyToTicket error:', err);
+//     try { await t.rollback(); } catch (e) { /* ignore */ }
+//     return res.status(500).json({ message: 'Internal server error: ' + err.message });
+//   }
+// };
+
+// exports.replyToTicket = async (req, res) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     const { ticketId } = req.params;
+//     const {
+//       message: rawMessage,
+//       status: requestedStatus,
+//       screenshot_url,
+//       assigned_to,
+//       priority: requestedPriority,
+//       assigned_client_user_id
+//     } = req.body;
+
+//     const files = req.files && Array.isArray(req.files) ? req.files : [];
+
+//     // ========== AUTHENTICATION HANDLING ==========
+//     let sender_type = 'user';
+//     let senderId = null;
+//     let senderName = null;
+//     let userRole = null;
+//     let isClient = false;
+
+//     console.log('Authentication debug:', {
+//       hasUser: !!req.user,
+//       hasClient: !!req.client,
+//       user: req.user ? { id: req.user.id, username: req.user.username, role: req.user.role_name } : null,
+//       client: req.client ? { id: req.client.id, company_name: req.client.company_name } : null
+//     });
+
+//     // Check client first
+//     if (req.client && req.client.id && req.client.company_name) {
+//       sender_type = 'client';
+//       senderId = req.client.id;
+//       senderName = req.client.company_name;
+//       userRole = req.client.role || 'user'; // Assuming client has role field
+//       isClient = true;
+//       console.log(`Client reply - Client ID: ${senderId}, Name: ${senderName}, Role: ${userRole}`);
+//     }
+//     // Then check user
+//     else if (req.user && req.user.id && req.user.username) {
+//       userRole = req.user.role_name;
+//       if (userRole === 'admin' || userRole === 'executive') {
+//         sender_type = 'admin';
+//       } else {
+//         sender_type = 'user';
+//       }
+//       senderId = req.user.id || req.user.user_id;
+//       senderName = req.user.username;
+//       console.log(`User reply - User ID: ${senderId}, Role: ${userRole}, Name: ${senderName}`);
+//     } else {
+//       await t.rollback();
+//       return res.status(401).json({ message: 'Unauthorized - No valid authentication found' });
+//     }
+
+//     // Validate senderId exists
+//     if (!senderId || !senderName) {
+//       await t.rollback();
+//       console.error('Invalid sender data:', { senderId, senderName, reqUser: req.user, reqClient: req.client });
+//       return res.status(400).json({ message: 'Unable to determine sender identity' });
+//     }
+
+//     // ========== PERMISSION CHECK ==========
+//     const canChangeStatus = 
+//       (userRole === 'admin') || 
+//       (userRole === 'executive') || 
+//       (isClient && (userRole === 'admin' || userRole === 'user')); // Client admin and user can change status
+
+//     const canChangeAssignment = 
+//       (userRole === 'admin') || 
+//       (isClient && userRole === 'admin'); // Only admin and client admin can assign
+
+//     const canChangePriority = 
+//       (userRole === 'admin'); // Only ticketing admin can change priority
+
+//     const canChangeClientAssignment = 
+//       (isClient && userRole === 'admin'); // Only client admin can assign to client users
+
+//     // Check if we have any action to perform
+//     const hasMessage = rawMessage && String(rawMessage).trim() !== '';
+//     const hasFiles = files.length > 0;
+//     const hasStatusAction = requestedStatus && String(requestedStatus).trim() !== '';
+//     const hasAssignAction = (assigned_to !== undefined && assigned_to !== null && String(assigned_to).trim() !== '');
+//     const hasPriorityAction = (requestedPriority !== undefined && requestedPriority !== null && String(requestedPriority).trim() !== '');
+//     const hasClientAssignAction = (assigned_client_user_id !== undefined && assigned_client_user_id !== null && String(assigned_client_user_id).trim() !== '');
+
+//     if (
+//       !hasMessage &&
+//       !hasFiles &&
+//       !hasStatusAction &&
+//       !screenshot_url &&
+//       !hasAssignAction &&
+//       !hasPriorityAction &&
+//       !hasClientAssignAction
+//     ) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         message: 'At least one of message / files / status / screenshot_url / assigned_to / priority / assigned_client_user_id is required'
+//       });
+//     }
+
+//     // Get current ticket state BEFORE any changes
+//     const ticket = await Ticket.findByPk(ticketId, { transaction: t });
+//     if (!ticket) {
+//       await t.rollback();
+//       return res.status(404).json({ message: 'Ticket not found' });
+//     }
+
+//     // Basic permission check to reply
+//     if (!(await ensureCanReply(req, ticket))) {
+//       await t.rollback();
+//       return res.status(403).json({ message: 'Forbidden' });
+//     }
+
+//     const now = new Date();
+//     const changes = {};
+//     let hasChanges = false;
+
+//     // Store field values for TicketReply (will be null if not changed)
+//     const replyFields = {
+//       status: null,
+//       assigned_to: null,
+//       priority: null,
+//       assigned_client_user_id: null
+//     };
+
+//     // ========== TRACK STATUS CHANGES ==========
+//     if (hasStatusAction) {
+//       if (!canChangeStatus) {
+//         await t.rollback();
+//         return res.status(403).json({ message: 'You are not allowed to change status' });
+//       }
+
+//       const newStatus = String(requestedStatus).trim();
+//       const allowedStatuses = ['Open', 'Pending', 'Resolved', 'Closed'];
+      
+//       if (!allowedStatuses.includes(newStatus)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
+//       }
+
+//       if (ticket.status !== newStatus) {
+//         changes.status = {
+//           from: ticket.status,
+//           to: newStatus
+//         };
+//         hasChanges = true;
+//         replyFields.status = newStatus; // Store the new value
+        
+//         ticket.prev_status = ticket.status;
+//         ticket.status = newStatus;
+//         ticket.last_updated_by = senderName;
+//         ticket.updated_at = now;
+
+//         if ((newStatus === 'Resolved' || newStatus === 'Closed') && !ticket.resolved_at) {
+//           ticket.resolved_at = now;
+//           const responseTime = await calculateWorkingHours(ticket.created_at, now);
+//           ticket.resolve_time_seconds = responseTime?.totalWorkingHours;
+//         }
+//       }
+//     }
+
+//     // ========== TRACK ASSIGNMENT CHANGES ==========
+//     if (hasAssignAction) {
+//       if (!canChangeAssignment) {
+//         await t.rollback();
+//         return res.status(403).json({ message: 'You are not allowed to change assignment' });
+//       }
+
+//       const assignedId = parseInt(assigned_to, 10);
+//       if (Number.isNaN(assignedId)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: 'Invalid assigned_to value' });
+//       }
+
+//       // Check if ticket is already assigned to the same user
+//       if (ticket.assigned_to !== assignedId) {
+//         // For non-client users, validate the assignee is an executive
+//         if (!isClient) {
+//           const execUser = await User.findByPk(assignedId, { transaction: t });
+//           if (!execUser) {
+//             await t.rollback();
+//             return res.status(400).json({ message: 'Assignee user not found' });
+//           }
+//           if (execUser.role_name !== 'executive') {
+//             await t.rollback();
+//             return res.status(400).json({ message: 'Assignee must be an executive' });
+//           }
+//         }
+
+//         changes.assigned_to = {
+//           from: ticket.assigned_to,
+//           to: assignedId
+//         };
+//         hasChanges = true;
+//         replyFields.assigned_to = assignedId; // Store the new value
+        
+//         ticket.assigned_to = assignedId;
+//         ticket.last_updated_by = senderName;
+//         ticket.updated_at = now;
+//       }
+//     }
+
+//     // ========== TRACK PRIORITY CHANGES ==========
+//     if (hasPriorityAction) {
+//       if (!canChangePriority) {
+//         await t.rollback();
+//         return res.status(403).json({ message: 'You are not allowed to change priority' });
+//       }
+
+//       const newPriority = String(requestedPriority).trim();
+//       const validPriorities = ['low', 'medium', 'high', 'critical', 'urgent'];
+      
+//       if (!validPriorities.includes(newPriority)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: `Invalid priority. Allowed: ${validPriorities.join(', ')}` });
+//       }
+
+//       if (ticket.priority !== newPriority) {
+//         changes.priority = {
+//           from: ticket.priority,
+//           to: newPriority
+//         };
+//         hasChanges = true;
+//         replyFields.priority = newPriority; // Store the new value
+        
+//         ticket.priority = newPriority;
+//         ticket.last_updated_by = senderName;
+//         ticket.updated_at = now;
+//       }
+//     }
+
+//     // ========== TRACK CLIENT USER ASSIGNMENT CHANGES ==========
+//     if (hasClientAssignAction) {
+//       if (!canChangeClientAssignment) {
+//         await t.rollback();
+//         return res.status(403).json({ message: 'You are not allowed to change client assignment' });
+//       }
+
+//       const newClientUserId = String(assigned_client_user_id).trim();
+      
+//       if (ticket.assigned_client_user_id !== newClientUserId) {
+//         changes.assigned_client_user_id = {
+//           from: ticket.assigned_client_user_id,
+//           to: newClientUserId
+//         };
+//         hasChanges = true;
+//         replyFields.assigned_client_user_id = newClientUserId; // Store the new value
+        
+//         ticket.assigned_client_user_id = newClientUserId;
+//         ticket.last_updated_by = senderName;
+//         ticket.updated_at = now;
+//       }
+//     }
+
+//     // Update response time if first admin reply
+//     if (req.user && req.user.role_name === 'admin' && !ticket.response_at) {
+//       ticket.response_at = now;
+//       const responseTime = await calculateWorkingHours(ticket.created_at, now);
+//       ticket.response_time_seconds = responseTime?.totalWorkingHours;
+//       ticket.last_updated_by = senderName;
+//     }
+
+//     // Update last_updated_by and updated_at even if only changes were made
+//     if (hasChanges) {
+//       ticket.last_updated_by = senderName;
+//       ticket.updated_at = now;
+//     }
+
+//     // Persist ticket changes
+//     await ticket.save({ transaction: t });
+
+//     // ========== CREATE REPLY WITH FIELD VALUES AND CHANGE LOG ==========
+//     let finalMessage = rawMessage || '';
+//     let reply = null;
+    
+//     // Add system message for changes if any
+//     if (hasChanges && Object.keys(changes).length > 0) {
+//       const changeMessages = [];
+      
+//       if (changes.status) {
+//         changeMessages.push(`Status changed from ${changes.status.from} to ${changes.status.to}`);
+//       }
+      
+//       if (changes.assigned_to) {
+//         const fromUser = changes.assigned_to.from ? `User ${changes.assigned_to.from}` : 'Unassigned';
+//         const toUser = changes.assigned_to.to ? `User ${changes.assigned_to.to}` : 'Unassigned';
+//         changeMessages.push(`Assignment changed from ${fromUser} to ${toUser}`);
+//       }
+      
+//       if (changes.priority) {
+//         changeMessages.push(`Priority changed from ${changes.priority.from} to ${changes.priority.to}`);
+//       }
+      
+//       if (changes.assigned_client_user_id) {
+//         const fromClient = changes.assigned_client_user_id.from || 'Unassigned';
+//         const toClient = changes.assigned_client_user_id.to || 'Unassigned';
+//         changeMessages.push(`Client assignment changed from ${fromClient} to ${toClient}`);
+//       }
+      
+//       const systemMessage = `[System] ${senderName} made changes: ${changeMessages.join('; ')}`;
+      
+//       if (finalMessage.trim()) {
+//         finalMessage = `${systemMessage}\n\n${finalMessage}`;
+//       } else {
+//         finalMessage = systemMessage;
+//       }
+//     }
+
+//     // Create the reply if there's a message, files, screenshot, or changes
+//     if (finalMessage.trim() !== '' || hasFiles || screenshot_url || hasChanges) {
+//       const replyData = {
+//         ticket_id: ticket.ticket_id ?? ticket.id,
+//         sender_id: senderId,
+//         sender_type: sender_type,
+//         client_sender_name: senderName,
+//         message: finalMessage,
+//         flag_log: hasChanges, // Set to true if there were changes
+//         change_log: hasChanges ? changes : null // Store the actual changes
+//       };
+
+//       // Add field values to reply (only if they were changed)
+//       if (hasChanges) {
+//         if (replyFields.status) replyData.status = replyFields.status;
+//         if (replyFields.assigned_to) replyData.assigned_to = replyFields.assigned_to;
+//         if (replyFields.priority) replyData.priority = replyFields.priority;
+//         if (replyFields.assigned_client_user_id) replyData.assigned_client_user_id = replyFields.assigned_client_user_id;
+//       }
+
+//       reply = await TicketReply.create(replyData, { transaction: t });
+//       console.log(`Created reply with changes: ${hasChanges}`, { 
+//         status: replyFields.status,
+//         assigned_to: replyFields.assigned_to,
+//         priority: replyFields.priority,
+//         assigned_client_user_id: replyFields.assigned_client_user_id
+//       });
+//     }
+
+//     // Handle file uploads (existing code)
+//     const createdDocsMeta = [];
+//     if (files.length > 0) {
+//       let replyToAttach = reply;
+//       if (!replyToAttach) {
+//         const replyData = {
+//           ticket_id: ticket.ticket_id ?? ticket.id,
+//           sender_id: senderId,
+//           sender_type: sender_type,
+//           client_sender_name: senderName,
+//           message: '',
+//           flag_log: hasChanges,
+//           change_log: hasChanges ? changes : null
+//         };
+
+//         // Add field values even for file-only replies
+//         if (hasChanges) {
+//           if (replyFields.status) replyData.status = replyFields.status;
+//           if (replyFields.assigned_to) replyData.assigned_to = replyFields.assigned_to;
+//           if (replyFields.priority) replyData.priority = replyFields.priority;
+//           if (replyFields.assigned_client_user_id) replyData.assigned_client_user_id = replyFields.assigned_client_user_id;
+//         }
+
+//         replyToAttach = await TicketReply.create(replyData, { transaction: t });
+//       }
+
+//       const docsToCreate = files.map((file) => {
+//         const b64 = file.buffer ? file.buffer.toString('base64') : null;
+//         const mime = file.mimetype || 'application/octet-stream';
+//         const isImage = mime.startsWith('image/');
+//         return {
+//           linked_id: replyToAttach.reply_id,
+//           table_name: 'ticket_reply',
+//           type: isImage ? 'image' : 'attachment',
+//           doc_name: file.originalname || file.filename || 'upload',
+//           mime_type: mime,
+//           doc_base64: b64,
+//           created_by: senderName,
+//           status: 'active'
+//         };
+//       });
+//       const created = await Document.bulkCreate(docsToCreate, { transaction: t });
+//       created.forEach((d) => {
+//         createdDocsMeta.push({
+//           document_id: d.document_id ?? d.id ?? null,
+//           doc_name: d.doc_name,
+//           mime_type: d.mime_type,
+//           created_on: d.created_on
+//         });
+//       });
+//     }
+
+//     // Handle screenshot (existing code)
+//     if (screenshot_url) {
+//       const dataUrl = String(screenshot_url);
+//       const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
+//       if (m) {
+//         const mimetype = m[1];
+//         const b64 = m[2];
+//         let replyToAttach = reply;
+//         if (!replyToAttach) {
+//           const replyData = {
+//             ticket_id: ticket.ticket_id ?? ticket.id,
+//             sender_id: senderId,
+//             sender_type: sender_type,
+//             client_sender_name: senderName,
+//             message: '',
+//             flag_log: hasChanges,
+//             change_log: hasChanges ? changes : null
+//           };
+
+//           if (hasChanges) {
+//             if (replyFields.status) replyData.status = replyFields.status;
+//             if (replyFields.assigned_to) replyData.assigned_to = replyFields.assigned_to;
+//             if (replyFields.priority) replyData.priority = replyFields.priority;
+//             if (replyFields.assigned_client_user_id) replyData.assigned_client_user_id = replyFields.assigned_client_user_id;
+//           }
+
+//           replyToAttach = await TicketReply.create(replyData, { transaction: t });
+//         }
+
+//         const doc = await Document.create({
+//           linked_id: replyToAttach.reply_id,
+//           table_name: 'ticket_reply',
+//           type: mimetype.startsWith('image/') ? 'image' : 'attachment',
+//           doc_name: req.body.screenshot_name ?? `upload.${(mimetype.split('/')[1] || 'bin')}`,
+//           mime_type: mimetype,
+//           doc_base64: b64,
+//           created_by: senderName,
+//           status: 'active'
+//         }, { transaction: t });
+
+//         createdDocsMeta.push({
+//           document_id: doc.document_id ?? doc.id ?? null,
+//           doc_name: doc.doc_name,
+//           mime_type: doc.mime_type,
+//           created_on: doc.created_on
+//         });
+//       }
+//     }
+
+//     await t.commit();
+
+//     // Prepare response
+//     const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+
+//     return res.status(201).json({
+//       message: 'Reply added successfully',
+//       reply: {
+//         ...(reply ? (reply.toJSON ? reply.toJSON() : reply) : {}),
+//         has_changes: hasChanges,
+//         changes: changes
+//       },
+//       documents: createdDocsMeta,
+//       ticket: ticketPlain,
+//       changes_made: hasChanges,
+//       user_permissions: {
+//         canChangeStatus,
+//         canChangeAssignment,
+//         canChangePriority,
+//         canChangeClientAssignment
+//       }
+//     });
+
+//   } catch (err) {
+//     console.error('replyToTicket error:', err);
+//     try { await t.rollback(); } catch (e) { 
+//       console.error('Rollback error:', e);
+//     }
+//     return res.status(500).json({ message: 'Internal server error: ' + err.message });
+//   }
+// };
+
+
 exports.replyToTicket = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -1035,44 +1856,46 @@ exports.replyToTicket = async (req, res) => {
       status: requestedStatus,
       screenshot_url,
       assigned_to,
-      priority: requestedPriority
+      priority: requestedPriority,
+      assigned_client_user_id
     } = req.body;
 
     const files = req.files && Array.isArray(req.files) ? req.files : [];
 
-    // ========== FIXED: PROPER AUTHENTICATION HANDLING ==========
+    // ========== AUTHENTICATION HANDLING ==========
     let sender_type = 'user';
     let senderId = null;
     let senderName = null;
-    let senderEmail = null;
+    let userRole = null;
+    let isClient = false;
 
     console.log('Authentication debug:', {
       hasUser: !!req.user,
       hasClient: !!req.client,
-      user: req.user ? { id: req.user.id, username: req.user.username } : null,
+      user: req.user ? { id: req.user.id, username: req.user.username, role: req.user.role_name } : null,
       client: req.client ? { id: req.client.id, company_name: req.client.company_name } : null
     });
 
-    // Check client first, but only if it has valid data
+    // Check client first
     if (req.client && req.client.id && req.client.company_name) {
       sender_type = 'client';
       senderId = req.client.id;
       senderName = req.client.company_name;
-      senderEmail = req.client.email;
-      console.log(`Client reply - Client ID: ${senderId}, Name: ${senderName}`);
+      userRole = req.client.role || 'user';
+      isClient = true;
+      console.log(`Client reply - Client ID: ${senderId}, Name: ${senderName}, Role: ${userRole}`);
     }
     // Then check user
     else if (req.user && req.user.id && req.user.username) {
-      const role = req.user.role_name;
-      if (role === 'admin' || role === 'executive') {
+      userRole = req.user.role_name;
+      if (userRole === 'admin' || userRole === 'executive') {
         sender_type = 'admin';
       } else {
         sender_type = 'user';
       }
       senderId = req.user.id || req.user.user_id;
       senderName = req.user.username;
-      senderEmail = req.user.email;
-      console.log(`User reply - User ID: ${senderId}, Role: ${role}, Name: ${senderName}`);
+      console.log(`User reply - User ID: ${senderId}, Role: ${userRole}, Name: ${senderName}`);
     } else {
       await t.rollback();
       return res.status(401).json({ message: 'Unauthorized - No valid authentication found' });
@@ -1084,40 +1907,114 @@ exports.replyToTicket = async (req, res) => {
       console.error('Invalid sender data:', { senderId, senderName, reqUser: req.user, reqClient: req.client });
       return res.status(400).json({ message: 'Unable to determine sender identity' });
     }
-    // ========== END FIX ==========
 
-    const isAdminSender = req.user && req.user.role_name === 'admin';
+    // ========== PERMISSION CHECK ==========
+    const canChangeStatus = 
+      (userRole === 'admin') || 
+      (userRole === 'executive') || 
+      (isClient && (userRole === 'admin' || userRole === 'user'));
+
+    const canChangeAssignment = 
+      (userRole === 'admin') || 
+      (isClient && userRole === 'admin');
+
+    const canChangePriority = 
+      (userRole === 'admin');
+
+    const canChangeClientAssignment = 
+      (isClient && userRole === 'admin');
+
+    // Check if we have any action to perform
+    const hasMessage = rawMessage && String(rawMessage).trim() !== '';
+    const hasFiles = files.length > 0;
+    const hasStatusAction = requestedStatus && String(requestedStatus).trim() !== '';
     const hasAssignAction = (assigned_to !== undefined && assigned_to !== null && String(assigned_to).trim() !== '');
     const hasPriorityAction = (requestedPriority !== undefined && requestedPriority !== null && String(requestedPriority).trim() !== '');
+    const hasClientAssignAction = (assigned_client_user_id !== undefined && assigned_client_user_id !== null && String(assigned_client_user_id).trim() !== '');
 
     if (
-      (!rawMessage || String(rawMessage).trim() === '') &&
-      files.length === 0 &&
-      !requestedStatus &&
+      !hasMessage &&
+      !hasFiles &&
+      !hasStatusAction &&
       !screenshot_url &&
-      !(isAdminSender && hasAssignAction) &&
-      !(isAdminSender && hasPriorityAction)
+      !hasAssignAction &&
+      !hasPriorityAction &&
+      !hasClientAssignAction
     ) {
       await t.rollback();
       return res.status(400).json({
-        message: 'At least one of message / files / status / screenshot_url / assigned_to (admin) / priority (admin) is required'
+        message: 'At least one of message / files / status / screenshot_url / assigned_to / priority / assigned_client_user_id is required'
       });
     }
 
+    // Get current ticket state BEFORE any changes
     const ticket = await Ticket.findByPk(ticketId, { transaction: t });
     if (!ticket) {
       await t.rollback();
       return res.status(404).json({ message: 'Ticket not found' });
     }
 
-    // Permission check
+    // Basic permission check to reply
     if (!(await ensureCanReply(req, ticket))) {
       await t.rollback();
       return res.status(403).json({ message: 'Forbidden' });
     }
 
-    // ========== NEW CHECK: PREVENT ASSIGNING TO SAME USER ==========
-    if (isAdminSender && hasAssignAction) {
+    const now = new Date();
+    const changes = {};
+    let hasChanges = false;
+
+    // Store field values for TicketReply (will be null if not changed)
+    const replyFields = {
+      status: null,
+      assigned_to: null,
+      priority: null,
+      assigned_client_user_id: null
+    };
+
+    // ========== TRACK STATUS CHANGES ==========
+    if (hasStatusAction) {
+      if (!canChangeStatus) {
+        await t.rollback();
+        return res.status(403).json({ message: 'You are not allowed to change status' });
+      }
+
+      const newStatus = String(requestedStatus).trim();
+      const allowedStatuses = ['Open', 'Pending', 'Resolved', 'Closed'];
+      
+      if (!allowedStatuses.includes(newStatus)) {
+        await t.rollback();
+        return res.status(400).json({ message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
+      }
+
+      if (ticket.status !== newStatus) {
+        changes.status = {
+          from: ticket.status,
+          to: newStatus
+        };
+        hasChanges = true;
+        replyFields.status = newStatus;
+        
+        ticket.prev_status = ticket.status;
+        ticket.status = newStatus;
+        ticket.last_updated_by = senderName;
+        ticket.updated_at = now;
+
+        if ((newStatus === 'Resolved' || newStatus === 'Closed') && !ticket.resolved_at) {
+          ticket.resolved_at = now;
+          const responseTime = await calculateWorkingHours(ticket.created_at, now);
+          ticket.resolve_time_seconds = responseTime?.totalWorkingHours;
+        }
+      }
+    }
+
+    // ========== TRACK ASSIGNMENT CHANGES ==========
+    if (hasAssignAction) {
+      if (!canChangeAssignment) {
+        await t.rollback();
+        return res.status(403).json({ message: 'You are not allowed to change assignment' });
+      }
+
       const assignedId = parseInt(assigned_to, 10);
       if (Number.isNaN(assignedId)) {
         await t.rollback();
@@ -1125,121 +2022,168 @@ exports.replyToTicket = async (req, res) => {
       }
 
       // Check if ticket is already assigned to the same user
-      if (ticket.assigned_to === assignedId) {
-        await t.rollback();
-        return res.status(400).json({
-          message: 'Ticket is already assigned to this user'
-        });
-      }
+      if (ticket.assigned_to !== assignedId) {
+        // For non-client users, validate the assignee is an executive
+        if (!isClient) {
+          const execUser = await User.findByPk(assignedId, { transaction: t });
+          if (!execUser) {
+            await t.rollback();
+            return res.status(400).json({ message: 'Assignee user not found' });
+          }
+          if (execUser.role_name !== 'executive') {
+            await t.rollback();
+            return res.status(400).json({ message: 'Assignee must be an executive' });
+          }
+        }
 
-      const execUser = await User.findByPk(assignedId, { transaction: t });
-      if (!execUser) {
-        await t.rollback();
-        return res.status(400).json({ message: 'Assignee user not found' });
-      }
-      if (execUser.role_name !== 'executive') {
-        await t.rollback();
-        return res.status(400).json({ message: 'Assignee must be an executive' });
+        changes.assigned_to = {
+          from: ticket.assigned_to,
+          to: assignedId
+        };
+        hasChanges = true;
+        replyFields.assigned_to = assignedId;
+        
+        ticket.assigned_to = assignedId;
+        ticket.last_updated_by = senderName;
+        ticket.updated_at = now;
       }
     }
-    // ========== END NEW CHECK ==========
 
-    // Only these statuses are allowed
-    const allowedStatuses = ['Open', 'Pending', 'Resolved', 'Closed'];
-    let statusChanged = false;
-    let newStatus = undefined;
-    if (requestedStatus) {
-      newStatus = String(requestedStatus).trim();
-      if (!allowedStatuses.includes(newStatus)) {
+    // ========== TRACK PRIORITY CHANGES ==========
+    if (hasPriorityAction) {
+      if (!canChangePriority) {
         await t.rollback();
-        return res.status(400).json({ message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
+        return res.status(403).json({ message: 'You are not allowed to change priority' });
       }
-      if (ticket.status !== newStatus) statusChanged = true;
-    }
 
-    // Priority update logic (admin only)
-    let priorityChanged = false;
-    let newPriority = undefined;
-    if (isAdminSender && hasPriorityAction) {
-      newPriority = String(requestedPriority).trim();
-
+      const newPriority = String(requestedPriority).trim();
       const validPriorities = ['low', 'medium', 'high', 'critical', 'urgent'];
+      
       if (!validPriorities.includes(newPriority)) {
         await t.rollback();
         return res.status(400).json({ message: `Invalid priority. Allowed: ${validPriorities.join(', ')}` });
       }
 
-      if (ticket.priority !== newPriority) priorityChanged = true;
+      if (ticket.priority !== newPriority) {
+        changes.priority = {
+          from: ticket.priority,
+          to: newPriority
+        };
+        hasChanges = true;
+        replyFields.priority = newPriority;
+        
+        ticket.priority = newPriority;
+        ticket.last_updated_by = senderName;
+        ticket.updated_at = now;
+      }
     }
 
-    const now = new Date();
+    // ========== TRACK CLIENT USER ASSIGNMENT CHANGES ==========
+    if (hasClientAssignAction) {
+      if (!canChangeClientAssignment) {
+        await t.rollback();
+        return res.status(403).json({ message: 'You are not allowed to change client assignment' });
+      }
 
-    // If admin replies for the first time -> set response_at & response_time_seconds
+      const newClientUserId = String(assigned_client_user_id).trim();
+      
+      if (ticket.assigned_client_user_id !== newClientUserId) {
+        changes.assigned_client_user_id = {
+          from: ticket.assigned_client_user_id,
+          to: newClientUserId
+        };
+        hasChanges = true;
+        replyFields.assigned_client_user_id = newClientUserId;
+        
+        ticket.assigned_client_user_id = newClientUserId;
+        ticket.last_updated_by = senderName;
+        ticket.updated_at = now;
+      }
+    }
+
+    // Update response time if first admin reply
     if (req.user && req.user.role_name === 'admin' && !ticket.response_at) {
       ticket.response_at = now;
       const responseTime = await calculateWorkingHours(ticket.created_at, now);
-
-      console.log("responseTime", responseTime, ticket.created_at, now);
       ticket.response_time_seconds = responseTime?.totalWorkingHours;
-      ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
+      ticket.last_updated_by = senderName;
     }
 
-    // If admin provided assigned_to, handle assignment (only admin allowed)
-    if (isAdminSender && hasAssignAction) {
-      const assignedId = parseInt(assigned_to, 10);
-
-      // Note: We already validated assignedId and user existence above
-      ticket.assigned_to = assignedId;
-      ticket.last_updated_by = req.user.username ?? String(senderId);
-      ticket.updated_at = now;
-    }
-
-    // Apply priority change (admin only)
-    if (priorityChanged && newPriority) {
-      ticket.priority = newPriority;
-      ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
-      ticket.updated_at = now;
-    }
-
-    // Apply status change
-    if (statusChanged && newStatus) {
-      ticket.prev_status = ticket.status;
-      ticket.status = newStatus;
-      ticket.last_updated_by = senderName ?? String(senderId);
-      ticket.updated_at = now;
-
-      if ((newStatus === 'Resolved' || newStatus === 'Closed') && !ticket.resolved_at) {
-        ticket.resolved_at = now;
-
-        const responseTime = await calculateWorkingHours(ticket.created_at, now);
-        //ticket.resolve_time_seconds = secondsBetween(ticket.created_at, now);
-
-
-        console.log(responseTime, ticket.created_at, now, "for responce")
-        ticket.resolve_time_seconds = responseTime?.totalWorkingHours
-      }
-    } else {
-      // Update last_updated_by and updated_at even if only priority changed
-      if (req.user && req.user.role_name === 'admin') {
-        ticket.last_updated_by = req.user.username ?? req.user.id ?? null;
-      }
+    // Update last_updated_by and updated_at even if only changes were made
+    if (hasChanges) {
+      ticket.last_updated_by = senderName;
       ticket.updated_at = now;
     }
 
     // Persist ticket changes
     await ticket.save({ transaction: t });
 
-    // ========== FIXED: CREATE REPLY WITH PROPER SENDER_ID ==========
-    let reply = null;
-    if (rawMessage && String(rawMessage).trim() !== '') {
-      reply = await TicketReply.create({
+    // ========== CREATE REPLY WITH FIELD VALUES AND CHANGE LOG ==========
+    const clientMessage = rawMessage ? String(rawMessage).trim() : '';
+    let systemMessage = null; // Initialize as null
+    
+    // Build system message for changes if any
+    if (hasChanges && Object.keys(changes).length > 0) {
+      const changeMessages = [];
+      
+      if (changes.status) {
+        changeMessages.push(`Status changed from ${changes.status.from} to ${changes.status.to}`);
+      }
+      
+      if (changes.assigned_to) {
+        const fromUser = changes.assigned_to.from ? `User ${changes.assigned_to.from}` : 'Unassigned';
+        const toUser = changes.assigned_to.to ? `User ${changes.assigned_to.to}` : 'Unassigned';
+        changeMessages.push(`Assignment changed from ${fromUser} to ${toUser}`);
+      }
+      
+      if (changes.priority) {
+        changeMessages.push(`Priority changed from ${changes.priority.from} to ${changes.priority.to}`);
+      }
+      
+      if (changes.assigned_client_user_id) {
+        const fromClient = changes.assigned_client_user_id.from || 'Unassigned';
+        const toClient = changes.assigned_client_user_id.to || 'Unassigned';
+        changeMessages.push(`Client assignment changed from ${fromClient} to ${toClient}`);
+      }
+      
+      systemMessage = `[System] ${senderName} made changes: ${changeMessages.join('; ')}`;
+    }
+
+    // Create the reply if there's a message, files, screenshot, or changes
+    const hasUserContent = (rawMessage && String(rawMessage).trim() !== '') || 
+                          files.length > 0 || 
+                          screenshot_url;
+
+    if (hasUserContent || hasChanges) {
+      const replyData = {
         ticket_id: ticket.ticket_id ?? ticket.id,
         sender_id: senderId,
         sender_type: sender_type,
-        client_sender_name: req?.user?.username,
-        message: rawMessage ?? ''
-      }, { transaction: t });
-      console.log(`Created reply with sender_id: ${senderId}, sender_type: ${sender_type}`);
+        client_sender_name: senderName,
+        message: clientMessage, // Only client message goes here
+        log_message: systemMessage, // Will be null if no changes
+        flag_log: hasChanges, // Set to true only if there were changes
+        change_log: hasChanges ? changes : null // Store the actual changes
+      };
+
+      // Add field values to reply (only if they were changed)
+      if (hasChanges) {
+        if (replyFields.status) replyData.status = replyFields.status;
+        if (replyFields.assigned_to) replyData.assigned_to = replyFields.assigned_to;
+        if (replyFields.priority) replyData.priority = replyFields.priority;
+        if (replyFields.assigned_client_user_id) replyData.assigned_client_user_id = replyFields.assigned_client_user_id;
+      }
+
+      reply = await TicketReply.create(replyData, { transaction: t });
+      console.log(`Created reply with changes: ${hasChanges}`, { 
+        status: replyFields.status,
+        assigned_to: replyFields.assigned_to,
+        priority: replyFields.priority,
+        assigned_client_user_id: replyFields.assigned_client_user_id,
+        message: clientMessage,
+        log_message: systemMessage,
+        flag_log: hasChanges
+      });
     }
 
     // Handle file uploads
@@ -1247,13 +2191,26 @@ exports.replyToTicket = async (req, res) => {
     if (files.length > 0) {
       let replyToAttach = reply;
       if (!replyToAttach) {
-        replyToAttach = await TicketReply.create({
+        const replyData = {
           ticket_id: ticket.ticket_id ?? ticket.id,
           sender_id: senderId,
           sender_type: sender_type,
-          client_sender_name: req?.user?.username,
-          message: ''
-        }, { transaction: t });
+          client_sender_name: senderName,
+          message: '', // Empty client message
+          log_message: systemMessage, // Will be null if no changes
+          flag_log: hasChanges,
+          change_log: hasChanges ? changes : null
+        };
+
+        // Add field values even for file-only replies
+        if (hasChanges) {
+          if (replyFields.status) replyData.status = replyFields.status;
+          if (replyFields.assigned_to) replyData.assigned_to = replyFields.assigned_to;
+          if (replyFields.priority) replyData.priority = replyFields.priority;
+          if (replyFields.assigned_client_user_id) replyData.assigned_client_user_id = replyFields.assigned_client_user_id;
+        }
+
+        replyToAttach = await TicketReply.create(replyData, { transaction: t });
       }
 
       const docsToCreate = files.map((file) => {
@@ -1267,7 +2224,7 @@ exports.replyToTicket = async (req, res) => {
           doc_name: file.originalname || file.filename || 'upload',
           mime_type: mime,
           doc_base64: b64,
-          created_by: senderName ?? String(senderId),
+          created_by: senderName,
           status: 'active'
         };
       });
@@ -1280,7 +2237,10 @@ exports.replyToTicket = async (req, res) => {
           created_on: d.created_on
         });
       });
-    } else if (screenshot_url) {
+    }
+
+    // Handle screenshot
+    if (screenshot_url) {
       const dataUrl = String(screenshot_url);
       const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
       if (m) {
@@ -1288,13 +2248,25 @@ exports.replyToTicket = async (req, res) => {
         const b64 = m[2];
         let replyToAttach = reply;
         if (!replyToAttach) {
-          replyToAttach = await TicketReply.create({
+          const replyData = {
             ticket_id: ticket.ticket_id ?? ticket.id,
             sender_id: senderId,
             sender_type: sender_type,
-            client_sender_name: req?.user?.username,
-            message: ''
-          }, { transaction: t });
+            client_sender_name: senderName,
+            message: '', // Empty client message
+            log_message: systemMessage, // Will be null if no changes
+            flag_log: hasChanges,
+            change_log: hasChanges ? changes : null
+          };
+
+          if (hasChanges) {
+            if (replyFields.status) replyData.status = replyFields.status;
+            if (replyFields.assigned_to) replyData.assigned_to = replyFields.assigned_to;
+            if (replyFields.priority) replyData.priority = replyFields.priority;
+            if (replyFields.assigned_client_user_id) replyData.assigned_client_user_id = replyFields.assigned_client_user_id;
+          }
+
+          replyToAttach = await TicketReply.create(replyData, { transaction: t });
         }
 
         const doc = await Document.create({
@@ -1304,7 +2276,7 @@ exports.replyToTicket = async (req, res) => {
           doc_name: req.body.screenshot_name ?? `upload.${(mimetype.split('/')[1] || 'bin')}`,
           mime_type: mimetype,
           doc_base64: b64,
-          created_by: senderName ?? String(senderId),
+          created_by: senderName,
           status: 'active'
         }, { transaction: t });
 
@@ -1319,65 +2291,35 @@ exports.replyToTicket = async (req, res) => {
 
     await t.commit();
 
-    // Notifications (simplified for now)
-    (async () => {
-      try {
-        const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
-        const replyPlain = reply ? (reply.toJSON ? reply.toJSON() : reply) : null;
-
-        // Your notification logic here...
-
-      } catch (mailErr) {
-        console.error('Mail error:', mailErr);
-      }
-    })();
-
     // Prepare response
     const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
 
-    // Fetch ticket-level documents if any
-    const ticketDocs = await Document.findAll({
-      where: { linked_id: ticket.ticket_id, table_name: 'ticket' },
-      attributes: ['document_id', 'doc_name', 'mime_type', 'created_on']
-    });
-
-    // Attach assignee object if assigned
-    let assigneeObj = null;
-    if (ticketPlain.assigned_to) {
-      const assigneeUser = await User.findByPk(ticketPlain.assigned_to);
-      if (assigneeUser) {
-        assigneeObj = {
-          user_id: assigneeUser.user_id,
-          username: assigneeUser.username,
-          email: assigneeUser.email
-        };
-      }
-    }
-
-    const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(ticketPlain);
-
     return res.status(201).json({
       message: 'Reply added successfully',
-      reply: reply,
+      reply: {
+        ...(reply ? (reply.toJSON ? reply.toJSON() : reply) : {}),
+        has_changes: hasChanges,
+        changes: changes
+      },
       documents: createdDocsMeta,
-      ticket: {
-        ...ticketPlain,
-        ticket_documents: ticketDocs.map(d => (d.toJSON ? d.toJSON() : d)),
-        assignee: assigneeObj,
-        sla,
-        response_sla_met,
-        resolve_sla_met
+      ticket: ticketPlain,
+      changes_made: hasChanges,
+      user_permissions: {
+        canChangeStatus,
+        canChangeAssignment,
+        canChangePriority,
+        canChangeClientAssignment
       }
     });
+
   } catch (err) {
     console.error('replyToTicket error:', err);
-    try { await t.rollback(); } catch (e) { /* ignore */ }
+    try { await t.rollback(); } catch (e) { 
+      console.error('Rollback error:', e);
+    }
     return res.status(500).json({ message: 'Internal server error: ' + err.message });
   }
 };
-
-
-
 
 exports.adminRequestClose = async (req, res) => {
   try {
@@ -1813,5 +2755,79 @@ exports.getDocument = async (req, res) => {
   } catch (err) {
     console.error('getDocument', err);
     return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+
+// Get ticket change logs
+exports.getTicketChangeLogs = async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+
+    const ticket = await Ticket.findByPk(ticketId);
+    if (!ticket) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    // Get all replies that have changes (flag_log = true)
+    const changeLogs = await TicketReply.findAll({
+      where: {
+        ticket_id: ticketId,
+        flag_log: true
+      },
+      order: [['created_at', 'DESC']],
+      attributes: [
+        'reply_id',
+        'sender_type',
+        'client_sender_name',
+        'message',
+        'status',
+        'assigned_to',
+        'priority',
+        'assigned_client_user_id',
+        'change_log',
+        'created_at'
+      ]
+    });
+
+    // Format the response with actual field values
+    const formattedLogs = await Promise.all(changeLogs.map(async (log) => {
+      const logData = log.toJSON ? log.toJSON() : log;
+      
+      // Get assignee name if assigned_to exists
+      let assigneeName = null;
+      if (logData.assigned_to) {
+        const assignee = await User.findByPk(logData.assigned_to);
+        assigneeName = assignee ? assignee.username : null;
+      }
+
+      return {
+        id: logData.reply_id,
+        sender: logData.client_sender_name || 'System',
+        sender_type: logData.sender_type,
+        message: logData.message,
+        field_values: {
+          status: logData.status,
+          assigned_to: logData.assigned_to,
+          assignee_name: assigneeName,
+          priority: logData.priority,
+          assigned_client_user_id: logData.assigned_client_user_id
+        },
+        changes: logData.change_log,
+        timestamp: logData.created_at
+      };
+    }));
+
+    return res.status(200).json({
+      message: 'Change logs retrieved successfully',
+      ticket_id: parseInt(ticketId),
+      change_logs: formattedLogs,
+      total_changes: formattedLogs.length
+    });
+
+  } catch (err) {
+    console.error('getTicketChangeLogs error:', err);
+    return res.status(500).json({ message: 'Internal server error: ' + err.message });
   }
 };
