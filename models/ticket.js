@@ -27,6 +27,8 @@ module.exports = (sequelize, DataTypes) => {
       },
 
       // ... rest of your existing fields
+      sla_resolve_datetime: { type: DataTypes.DATE, allowNull: true },
+      sla_response_datetime: { type: DataTypes.DATE, allowNull: true },
       module: { type: DataTypes.STRING(100), allowNull: true },
       sub_module: { type: DataTypes.STRING(100), allowNull: true },
       category: { type: DataTypes.STRING(100), allowNull: true },

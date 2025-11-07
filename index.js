@@ -52,8 +52,16 @@ app.post("/api/calculateTime", async (req, res) => {
         .json({ message: "start_date_time and end_date_time are required" });
     }
 
-    const start = new Date(start_date_time?.includes(".") ? start_date_time?.split(".")[0] : start_date_time);
-    const end = new Date(end_date_time?.includes(".") ? end_date_time?.split(".")[0] : end_date_time);
+    const start = new Date(
+      start_date_time?.includes(".")
+        ? start_date_time?.split(".")[0]
+        : start_date_time
+    );
+    const end = new Date(
+      end_date_time?.includes(".")
+        ? end_date_time?.split(".")[0]
+        : end_date_time
+    );
 
     if (end < start) {
       return res
@@ -83,36 +91,6 @@ app.post("/api/calculateTime", async (req, res) => {
     };
 
     // Helper: calculate working hours for a given day
-    // const getWorkingHoursForDay = (dateStart, dateEnd, isEndDate = false) => {
-    //   const exception = getExceptionForDate(dateStart);
-
-    //   // If it's a holiday
-    //   if (!isEndDate && exception && exception.type === "holiday") {
-    //     return 0;
-    //   }
-
-    //   // Determine work start and end times for this day
-    //   const workStart = new Date(dateStart);
-    //   const workEnd = new Date(dateStart);
-
-    //   if (exception && exception.open_time && exception.close_time) {
-    //     // Apply exception times (e.g., half-day)
-    //     const [openHour, openMin] = exception.open_time.split(":").map(Number);
-    //     const [closeHour, closeMin] = exception.close_time.split(":").map(Number);
-    //     workStart.setHours(openHour, openMin, 0, 0);
-    //     workEnd.setHours(closeHour, closeMin, 0, 0);
-    //   } else {
-    //     // Normal working hours
-    //     workStart.setHours(WORK_START_HOUR, 0, 0, 0);
-    //     workEnd.setHours(WORK_END_HOUR, 0, 0, 0);
-    //   }
-
-    //   const startTime = dateStart > workStart ? dateStart : workStart;
-    //   const endTime = isEndDate ? dateEnd : (dateEnd < workEnd ? dateEnd : workEnd);
-
-    //   const diff = (endTime - startTime) / (1000 * 60 * 60);
-    //   return diff > 0 ? diff : 0;
-    // };
     const getWorkingHoursForDay = (dateStart, dateEnd, isEndDate = false) => {
       const exception = getExceptionForDate(dateStart);
 
@@ -215,105 +193,14 @@ app.post("/api/calculateTime", async (req, res) => {
   }
 });
 
-// app.post("/api/calculateTime", async (req, res) => {
-//   try {
-//     const { start_date_time, end_date_time } = req.body;
-
-//     if (!start_date_time || !end_date_time) {
-//       return res
-//         .status(400)
-//         .json({ message: "start_date_time and end_date_time are required" });
-//     }
-
-//     const start = new Date(start_date_time);
-//     const end = new Date(end_date_time);
-
-//     if (end < start) {
-//       return res
-//         .status(400)
-//         .json({ message: "end_date_time must be after start_date_time" });
-//     }
-
-//     // Define working hours (10 AM - 6 PM)
-//     const WORK_START_HOUR = 10;
-//     const WORK_END_HOUR = 18;
-//     const FULL_DAY_HOURS = 8;
-
-//     const exceptions = await Exception.findAll({
-//       where: {
-//         date: {
-//           [Op.between]: [start, end],
-//         },
-//       },
-//       raw: true,
-//     });
-//     console.log("exceptions", exceptions);
-
-//     const getWorkingHoursForDay = (dateStart, dateEnd, isEndDate = false) => {
-//       const workStart = new Date(dateStart);
-//       const workEnd = new Date(dateStart);
-
-//       workStart.setHours(WORK_START_HOUR, 0, 0, 0);
-//       workEnd.setHours(WORK_END_HOUR, 0, 0, 0);
-
-//       const startTime = dateStart > workStart ? dateStart : workStart;
-//       const endTime = isEndDate
-//         ? dateEnd
-//         : dateEnd < workEnd
-//         ? dateEnd
-//         : workEnd;
-
-//       const diff = (endTime - startTime) / (1000 * 60 * 60);
-//       return diff > 0 ? diff : 0;
-//     };
-
-//     if (start.toDateString() === end.toDateString()) {
-//       const hours = getWorkingHoursForDay(start, end, true);
-//       return res.json({
-//         success: true,
-//         totalWorkingHours: hours.toFixed(2),
-//       });
-//     }
-
-//     // First day
-//     const firstDayEnd = new Date(start);
-//     firstDayEnd.setHours(23, 59, 59, 999);
-//     const firstDayHours = getWorkingHoursForDay(start, firstDayEnd);
-
-//     // Last day
-//     const lastDayStart = new Date(end);
-//     lastDayStart.setHours(0, 0, 0, 0);
-//     const lastDayHours = getWorkingHoursForDay(lastDayStart, end, true);
-
-//     // Full days between
-//     const fullDaysCount = Math.max(
-//       0,
-//       Math.floor((lastDayStart - firstDayEnd) / (1000 * 60 * 60 * 24))
-//     );
-
-//     // console.log(firstDayHours, lastDayHours, fullDaysCount);
-
-//     const total = firstDayHours + lastDayHours + fullDaysCount * FULL_DAY_HOURS;
-
-//     res.json({
-//       success: true,
-//       // firstDayHours: firstDayHours.toFixed(2),
-//       // lastDayHours: lastDayHours.toFixed(2),
-//       // fullDays: fullDaysCount,
-//       totalWorkingHours: total.toFixed(2),
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Error calculating time",
-//       error: error.message,
-//     });
-//   }
-// });
+app.post("/api/calculateCompletionTime", async (req, res) => {
+  const { start_date_time, sla_time } = req.body;
+  const result = await calculateCompletionTime(start_date_time, sla_time);
+  res.json(result);
+});
 
 app.get("/api/check", (req, res) => {
-  console.log(req.cookies); // should log { token: "..." }
+  console.log(req.cookies);
   res.json({ cookies: req.cookies });
 });
 
@@ -350,9 +237,9 @@ const escalationReportRoutes = require("./routes/escalationReportRoutes");
 const { Op } = require("sequelize");
 app.use("/api/escalation-reports", escalationReportRoutes);
 
-const clientRoutes = require('./routes/clientRoutes');
-app.use('/api/admin/clients', clientRoutes);
-
+const clientRoutes = require("./routes/clientRoutes");
+const { calculateCompletionTime } = require("./utils/calculateCompletionTime");
+app.use("/api/admin/clients", clientRoutes);
 
 app.get("/", (req, res) => res.send("Ticketing system API running"));
 
