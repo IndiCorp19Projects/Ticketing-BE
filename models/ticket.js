@@ -50,6 +50,10 @@ module.exports = (sequelize, DataTypes) => {
       resolve_time_seconds: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
       last_updated_by: { type: DataTypes.STRING(100), allowNull: true },
       assigned_to: { type: DataTypes.INTEGER, allowNull: true },
+          assigned_to_user_name: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+      },
 
       client_user_id: {
         type: DataTypes.STRING(255),

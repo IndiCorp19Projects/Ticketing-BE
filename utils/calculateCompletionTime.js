@@ -7,11 +7,15 @@ async function calculateCompletionTime(start_date_time, sla_time) {
       throw new Error("start_date_time and sla_time are required");
     }
 
-    const start = new Date(
-      start_date_time?.includes(".")
-        ? start_date_time?.split(".")[0]
-        : start_date_time
-    );
+    let parsedStartTime = start_date_time;
+
+    if (typeof start_date_time === "string") {
+      parsedStartTime = start_date_time.includes(".")
+        ? start_date_time.split(".")[0]
+        : start_date_time;
+    }
+
+    const start = new Date(parsedStartTime);
 
     if (isNaN(start)) {
       throw new Error("Invalid start_date_time");
