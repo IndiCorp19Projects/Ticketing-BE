@@ -62,6 +62,16 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(255),
         allowNull: true
       },
+
+      assigned_client_user_name: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+      },
+
+      assigned_to_user_name: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+      },
       // Store changes for detailed logging
       change_log: {
         type: DataTypes.JSON,
