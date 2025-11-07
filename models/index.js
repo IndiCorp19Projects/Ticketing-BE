@@ -34,6 +34,9 @@ const SystemRegistration = require("./SystemRegistration")(
 const Client = require("./client")(sequelize, Sequelize.DataTypes);
 const ClientSLA = require("./clientSLA")(sequelize, Sequelize.DataTypes);
 
+const slaBreachmailLogModel = require("./slaBreachmailLogModel")(sequelize, Sequelize.DataTypes);
+
+
 const Escalation = require("./escalation.js")(sequelize, Sequelize.DataTypes);
 
 const EscalationHistory = require("./escalationHistory")(
@@ -64,6 +67,8 @@ dbObj.SystemRegistration = SystemRegistration; // ADD THIS
 
 dbObj.Client = Client;
 dbObj.ClientSLA = ClientSLA;
+
+dbObj.slaBreachmailLogModel = slaBreachmailLogModel;
 
 dbObj.Escalation = Escalation; // ADD THIS
 
