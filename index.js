@@ -1,6 +1,7 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 require("dotenv").config();
+require("./slaMonitor");
 
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
