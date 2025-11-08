@@ -7,7 +7,6 @@ const clientAuth = require('../middleware/clientAuth');
 // Apply client authentication to all routes
 router.use(clientAuth);
 
-
 // router.post('/upload-image', clientAuth, escalationController.uploadEscalationImage);
 
 // Get escalation levels
@@ -15,6 +14,7 @@ router.get('/levels', escalationController.getEscalationLevels);
 
 // Escalate ticket
 router.post('/tickets/:ticketId/escalate', escalationController.escalateTicket);
+router.post('/escalate/info', escalationController.GetEscalateInfo);
 
 // Send escalation reminder
 router.post('/escalations/:escalationId/reminder', escalationController.sendEscalationReminder);

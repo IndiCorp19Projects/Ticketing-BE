@@ -38,7 +38,7 @@ app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://localhost:3001"],
+    origin: ["http://localhost:3000", "http://localhost:3001",'http://192.168.1.7:3000'],
     credentials: true,
   })
 );
