@@ -788,6 +788,8 @@ async function createTicket(req, res) {
 
     let slaResolveDateTime = null;
     let slaRespondDateTime = null;
+    const nowTime = new Date();
+    let indiaTime = new Date(nowTime.getTime() + 5.5 * 60 * 60 * 1000);
 
     // Find client SLA if issue type is provided
     if (issue_type_id && !isOtherIssueType) {
@@ -807,11 +809,11 @@ async function createTicket(req, res) {
       if (clientSLA) {
         clientSlaId = clientSLA.client_sla_id;
         slaResolveDateTime = await calculateCompletionTime(
-          new Date(),
+          indiaTime,
           clientSLA?.resolve_target_minutes || 2
         );
         slaRespondDateTime = await calculateCompletionTime(
-          new Date(),
+          indiaTime,
           clientSLA?.response_target_minutes || 8
         );
       }
@@ -821,11 +823,11 @@ async function createTicket(req, res) {
     if (isOtherIssueType && !clientSlaId) {
       clientSlaId = 4;
       slaResolveDateTime = await calculateCompletionTime(
-        new Date(),
+        indiaTime,
         2
       );
       slaRespondDateTime = await calculateCompletionTime(
-        new Date(),
+        indiaTime,
         8
       );
     }

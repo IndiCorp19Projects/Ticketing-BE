@@ -1,7 +1,7 @@
 const cron = require("node-cron");
 const { sendMail } = require("./utils/mailer");
 const { Op } = require("sequelize");
-const { Ticket, Client, User } = require("./models");
+const { Ticket, Client, User, slaBreachmailLogModel } = require("./models");
 
 // Run every 10 minutes
 cron.schedule("*/10 * * * *", async () => {
@@ -44,11 +44,31 @@ cron.schedule("*/10 * * * *", async () => {
                <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>response SLA</strong> within 10 minutes.</p>
                <p>Please take action immediately.</p>`,
         });
+
+        await slaBreachmailLogModel.create({
+          ticket_id: ticket.ticket_id,
+          to: client?.email || "john.doe@example.com",
+          subject: `⚠️ SLA Response Warning: Ticket #${ticket.id}`,
+          text: `Ticket #${ticket.id} is approaching its SLA response deadline.`,
+          html: `<p>Dear Team,</p>
+               <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>response SLA</strong> within 10 minutes.</p>
+               <p>Please take action immediately.</p>`,
+        });
       }
 
       const user = await User.findOne({ where: { role_name: "admin" } });
 
       await sendMail({
+        to: user?.email || "john.doe@example.com",
+        subject: `⚠️ SLA Response Warning: Ticket #${ticket.id}`,
+        text: `Ticket #${ticket.id} is approaching its SLA response deadline.`,
+        html: `<p>Dear Team,</p>
+               <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>response SLA</strong> within 10 minutes.</p>
+               <p>Please take action immediately.</p>`,
+      });
+
+      await slaBreachmailLogModel.create({
+        ticket_id: ticket.ticket_id,
         to: user?.email || "john.doe@example.com",
         subject: `⚠️ SLA Response Warning: Ticket #${ticket.id}`,
         text: `Ticket #${ticket.id} is approaching its SLA response deadline.`,
@@ -73,11 +93,31 @@ cron.schedule("*/10 * * * *", async () => {
                <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>resolution SLA</strong> within 10 minutes.</p>
                <p>Please resolve it as soon as possible.</p>`,
         });
+
+        await slaBreachmailLogModel.create({
+          ticket_id: ticket.ticket_id,
+          to: client?.email || "john.doe@example.com",
+          subject: `⚠️ SLA Resolution Warning: Ticket #${ticket.id}`,
+          text: `Ticket #${ticket.id} is approaching its SLA resolution deadline.`,
+          html: `<p>Dear Team,</p>
+               <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>resolution SLA</strong> within 10 minutes.</p>
+               <p>Please resolve it as soon as possible.</p>`,
+        });
       }
 
       const user = await User.findOne({ where: { role_name: "admin" } });
 
       await sendMail({
+        to: user?.email || "john.doe@example.com",
+        subject: `⚠️ SLA Resolution Warning: Ticket #${ticket.id}`,
+        text: `Ticket #${ticket.id} is approaching its SLA resolution deadline.`,
+        html: `<p>Dear Team,</p>
+               <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>resolution SLA</strong> within 10 minutes.</p>
+               <p>Please resolve it as soon as possible.</p>`,
+      });
+
+      await slaBreachmailLogModel.create({
+        ticket_id: ticket.ticket_id,
         to: user?.email || "john.doe@example.com",
         subject: `⚠️ SLA Resolution Warning: Ticket #${ticket.id}`,
         text: `Ticket #${ticket.id} is approaching its SLA resolution deadline.`,
