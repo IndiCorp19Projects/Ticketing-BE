@@ -3753,7 +3753,7 @@ async function replyToTicket(req, res) {
         changeMessages.push(`Total file size updated from ${changes.ticket_total_file_size.from} to ${changes.ticket_total_file_size.to}`);
       }
       
-      systemMessage = `[System] ${clientUserName} made changes: ${changeMessages.join('; ')}`;
+      systemMessage = `${clientUserName} made changes: ${changeMessages.join('; ')}`;
     }
 
     // CREATE REPLY IF: user provides content OR there are changes to track

@@ -3798,7 +3798,7 @@ exports.replyToTicket = async (req, res) => {
         changeMessages.push(`Client assignment changed from ${fromClient} to ${toClient}`);
       }
       
-      systemMessage = `[System] ${senderName} made changes: ${changeMessages.join('; ')}`;
+      systemMessage = `${senderName} made changes: ${changeMessages.join('; ')}`;
     }
 
     // Create the reply if there's a message, files, screenshot, or changes
