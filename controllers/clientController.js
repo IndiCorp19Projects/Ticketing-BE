@@ -376,7 +376,7 @@ exports.createClient = async (req, res) => {
     }
 
     // Validate new fields
-    if (allowed_file_size && (allowed_file_size < 1 || allowed_file_size > 100)) {
+    if (allowed_file_size && (allowed_file_size < 1 || allowed_file_size > 100000000000000000)) {
       await t.rollback();
       return res.status(400).json({ message: 'Allowed file size must be between 1 and 100 MB' });
     }
@@ -525,7 +525,7 @@ exports.updateClient = async (req, res) => {
 
     // NEW FIELDS UPDATE LOGIC
     if (allowed_file_size !== undefined) {
-      if (allowed_file_size < 1 || allowed_file_size > 100) {
+      if (allowed_file_size < 1 || allowed_file_size > 100000000000000000) {
         await t.rollback();
         return res.status(400).json({ message: 'Allowed file size must be between 1 and 100 MB' });
       }

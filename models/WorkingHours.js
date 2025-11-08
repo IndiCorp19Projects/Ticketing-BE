@@ -66,7 +66,7 @@ module.exports = (sequelize, DataTypes) => {
       timestamps: false,
       indexes: [
         {
-          unique: true,
+          // unique: true,
           fields: ['is_default'],
           where: { is_default: true }
         }

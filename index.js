@@ -244,6 +244,17 @@ app.use("/api/admin/clients", clientRoutes);
 
 app.get("/", (req, res) => res.send("Ticketing system API running"));
 
+
+// app.js or routes/index.js
+const clientSLARoutes = require('./routes/clientslaRoutes');
+app.use('/api/client/slas', clientSLARoutes);
+
+
+// In your main server file (app.js or server.js)
+const escalationLevelRoutes = require('./routes/escalationLevels');
+app.use('/api/admin/escalation-levels', escalationLevelRoutes);
+
+
 app.use((err, req, res, next) => {
   console.error("Unhandled error", err);
   res.status(500).json({ message: "Internal server error" });
@@ -262,6 +273,7 @@ const PORT = process.env.PORT || 5000;
 //   .catch((err) => {
 //     console.error("DB sync error", err);
 //   });
+
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

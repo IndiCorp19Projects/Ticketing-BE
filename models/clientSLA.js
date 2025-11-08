@@ -66,14 +66,18 @@ module.exports = (sequelize, DataTypes) => {
       updated_on: {
         type: DataTypes.DATE,
         allowNull: true
-      }
+      },
+           remark: {  // NEW FIELD
+        type: DataTypes.TEXT,
+        allowNull: true
+      },
     },
     {
       tableName: 'client_sla',
       timestamps: false,
       indexes: [
         {
-          unique: true,
+          // unique: true,
           fields: ['client_id', 'issue_type_id']
         }
       ]

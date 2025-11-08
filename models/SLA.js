@@ -1,3 +1,4 @@
+// models/sla.js
 module.exports = (sequelize, DataTypes) => {
   const SLA = sequelize.define(
     'SLA',
@@ -27,7 +28,7 @@ module.exports = (sequelize, DataTypes) => {
           key: 'issue_type_id'
         }
       },
-      working_hours_id: {  // ADD THIS FIELD
+      working_hours_id: {
         type: DataTypes.INTEGER,
         allowNull: true,
         references: {
@@ -49,6 +50,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: true
+      },
+      remark: {  // NEW FIELD
+        type: DataTypes.TEXT,
+        allowNull: true
       },
       created_by: {
         type: DataTypes.STRING(100),
@@ -73,11 +78,11 @@ module.exports = (sequelize, DataTypes) => {
       timestamps: false,
       indexes: [
         {
-          unique: true,
+          // unique: true,
           fields: ['user_id', 'issue_type_id']
         },
         {
-          unique: true,
+          // unique: true,
           fields: ['user_id', 'name']
         }
       ]
@@ -91,7 +96,7 @@ module.exports = (sequelize, DataTypes) => {
       as: 'issue_type',
       constraints: false
     });
-    SLA.belongsTo(models.WorkingHours, {  // ADD THIS ASSOCIATION
+    SLA.belongsTo(models.WorkingHours, {
       foreignKey: 'working_hours_id',
       as: 'working_hours',
       constraints: false

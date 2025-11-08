@@ -32,6 +32,19 @@ module.exports = (sequelize, DataTypes) => {
       description: {
         type: DataTypes.TEXT,
         allowNull: true
+      },
+      // NEW FIELDS
+      client_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'client',
+          key: 'client_id'
+        }
+      },
+      escalation_rule: {
+        type: DataTypes.STRING(100),
+        allowNull: true
       }
     },
     {
@@ -41,7 +54,14 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   EscalationLevel.associate = (models) => {
-    EscalationLevel.belongsTo(models.User, { foreignKey: 'default_assignee_id', as: 'default_assignee' });
+    EscalationLevel.belongsTo(models.User, { 
+      foreignKey: 'default_assignee_id', 
+      as: 'default_assignee' 
+    });
+    EscalationLevel.belongsTo(models.Client, { 
+      foreignKey: 'client_id', 
+      as: 'client' 
+    });
   };
 
   return EscalationLevel;

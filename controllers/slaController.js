@@ -9,10 +9,10 @@ const validateId = (id) => {
 exports.listSLAs = async (req, res) => {
   try {
     const includeInactive = req.query.includeInactive === 'true';
-    const where = includeInactive ? {} : { is_active: true };
+    // const where = includeInactive ? {} : { is_active: true };
 
     const slas = await ClientSLA.findAll({
-      where,
+      // where,
       include: [
         {
           model: Client,
@@ -22,7 +22,7 @@ exports.listSLAs = async (req, res) => {
         {
           model: IssueType,
           as: 'issue_type',
-          attributes: ['issue_type_id', 'name', 'is_active']
+          attributes: ['issue_type_id', 'name']
         }
       ],
       order: [['created_on', 'DESC']]
