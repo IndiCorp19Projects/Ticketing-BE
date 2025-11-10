@@ -953,10 +953,137 @@ async function createTicket(req, res) {
 
 
 
+// async function listTickets(req, res) {
+//   try {
+//     const clientId = req.client_user.client_id;
+//     const { status, priority, page = 1111111111111111, limit = 2000000000000000, search } = req.query;
+
+//     // Base: ticket must belong to same client
+//     let whereCondition = { client_id: clientId };
+
+//     // For non-admin users
+//     if (req.client_user.role === 'user') {
+//       const userId = req.client_user.id;
+
+//       whereCondition = {
+//         client_id: clientId,
+//         assigned_client_user_id: userId
+//       };
+//     } // admin role sees all tickets for client
+
+//     // Add filters
+//     if (status && status !== 'all') whereCondition.status = status;
+//     if (priority && priority !== 'all') whereCondition.priority = priority;
+
+//     // Search
+//     if (search) {
+//       const searchConditions = [
+//         { comment: { [Op.like]: `%${search}%` } },
+//         { category: { [Op.like]: `%${search}%` } },
+//         { module: { [Op.like]: `%${search}%` } },
+//         { ticket_no: { [Op.like]: `%${search}%` } },
+//         { client_user_name: { [Op.like]: `%${search}%` } },
+//         { assigned_client_user_name: { [Op.like]: `%${search}%` } }
+//       ];
+
+//       if (whereCondition[Op.or]) {
+//         whereCondition[Op.or] = whereCondition[Op.or].concat(searchConditions);
+//       } else {
+//         whereCondition[Op.or] = searchConditions;
+//       }
+//     }
+
+//     const offset = (page - 1) * limit;
+
+//     const { count, rows: tickets } = await Ticket.findAndCountAll({
+//       where: whereCondition,
+//       include: [
+//         {
+//           model: Client,
+//           as: 'client',
+//           attributes: ['client_id', 'company_name', 'contact_person', 'email',"allowed_file_size"]
+//         },
+//         {
+//           model: TicketReply,
+//           as: 'replies',
+//           include: [{
+//             model: Document,
+//             as: 'documents',
+//             attributes: ['document_id', 'doc_name', 'mime_type', 'created_on']
+//           }]
+//         },
+//         {
+//           model: Document,
+//           as: 'documents',
+//           attributes: ['document_id', 'doc_name', 'mime_type', 'created_on']
+//         },
+//         {
+//           model: ClientSLA,
+//           as: 'client_sla'
+//         }
+//       ],
+//       order: [['created_at', 'DESC']],
+//       limit: parseInt(limit, 10),
+//       offset: parseInt(offset, 10)
+//     });
+
+//     // Process tickets with SLA
+//     const ticketsWithSLA = await Promise.all(
+//       tickets.map(async (ticket) => {
+//         const plain = ticket.toJSON ? ticket.toJSON() : ticket;
+//         if (Array.isArray(plain.replies)) {
+//           for (let reply of plain.replies) {
+//             if (reply.sender_type === 'client') {
+//               reply.sender = {
+//                 user_id: plain.client.client_id,
+//                 username: plain.client.company_name,
+//                 email: plain.client.email,
+//                 is_client: true
+//               };
+//             }
+//           }
+//           plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+//         }
+//         const { response_sla_met, resolve_sla_met, sla } = await computeClientSLACompliance(plain);
+//         plain.client_sla = sla ? (sla.toJSON ? sla.toJSON() : sla) : plain.client_sla ?? null;
+//         plain.response_sla_met = response_sla_met;
+//         plain.resolve_sla_met = resolve_sla_met;
+//         return plain;
+//       })
+//     );
+
+//     // User permissions
+//     const userPermissions = req.client_user.role === 'admin' ?
+//       ['view_all_tickets', 'assign_tickets', 'escalate_tickets'] :
+//       ['view_own_unassigned_tickets', 'view_assigned_tickets', 'create_tickets'];
+
+//     return res.json({
+//       success: true,
+//       tickets: ticketsWithSLA,
+//       user_info: {
+//         id: req.client_user.client_user_id,
+//         name: req.client_user.name,
+//         role: req.client_user.role,
+//         permissions: userPermissions
+//       },
+//       pagination: {
+//         total: count,
+//         page: parseInt(page, 10),
+//         limit: parseInt(limit, 10),
+//         totalPages: Math.ceil(count / limit)
+//       }
+//     });
+//   } catch (error) {
+//     console.error('List tickets error:', error);
+//     return res.status(500).json({ success: false, message: 'Internal server error' });
+//   }
+// }
+
+
 async function listTickets(req, res) {
   try {
     const clientId = req.client_user.client_id;
-    const { status, priority, page = 1, limit = 20, search } = req.query;
+    const { status, priority, search } = req.query;
 
     // Base: ticket must belong to same client
     let whereCondition = { client_id: clientId };
@@ -993,9 +1120,8 @@ async function listTickets(req, res) {
       }
     }
 
-    const offset = (page - 1) * limit;
-
-    const { count, rows: tickets } = await Ticket.findAndCountAll({
+    // Remove pagination - fetch all tickets
+    const tickets = await Ticket.findAll({
       where: whereCondition,
       include: [
         {
@@ -1022,9 +1148,8 @@ async function listTickets(req, res) {
           as: 'client_sla'
         }
       ],
-      order: [['created_at', 'DESC']],
-      limit: parseInt(limit, 10),
-      offset: parseInt(offset, 10)
+      order: [['created_at', 'DESC']]
+      // Removed limit and offset
     });
 
     // Process tickets with SLA
@@ -1066,12 +1191,8 @@ async function listTickets(req, res) {
         role: req.client_user.role,
         permissions: userPermissions
       },
-      pagination: {
-        total: count,
-        page: parseInt(page, 10),
-        limit: parseInt(limit, 10),
-        totalPages: Math.ceil(count / limit)
-      }
+      // Removed pagination object
+      total: ticketsWithSLA.length // Optional: include total count if needed
     });
   } catch (error) {
     console.error('List tickets error:', error);
