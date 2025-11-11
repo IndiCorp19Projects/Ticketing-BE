@@ -96,6 +96,7 @@ exports.GetEscalateInfo = async (req, res) => {
       const escalateLevels = await EscalationLevel.findAll({
         where: { client_id: client_id, is_active: true },
         order: [["level_number", "ASC"]],
+        raw: true,
       });
       const hours = await calculateWorkingHours(
         new Date(sla_resolve_datetime),
@@ -127,7 +128,9 @@ exports.GetEscalateInfo = async (req, res) => {
     if (escalateLevel?.default_assignee_id) {
       const user = await User.findByPk(escalateLevel.default_assignee_id, {
         attributes: ["username", "first_name", "last_name", "email"],
+        raw: true,
       });
+      console.log("Sdafdsaf", user, escalateLevel);
       escalateLevel.assigned_user = user;
     }
 
