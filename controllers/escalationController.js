@@ -207,7 +207,7 @@ exports.GetEscalateInfo = async (req, res) => {
 
     return res.json({
       success: true,
-      message: successfully,
+      message: "successfully",
       data: escalateLevel,
     });
   } catch (error) {
