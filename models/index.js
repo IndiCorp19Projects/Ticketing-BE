@@ -15,8 +15,8 @@ const dbObj = { sequelize, Sequelize };
 
 // explicit model imports
 const User = require("./user")(sequelize, Sequelize.DataTypes);
-const Ticket = require("./Ticket")(sequelize, Sequelize.DataTypes);
-const TicketReply = require("./TicketReply")(sequelize, Sequelize.DataTypes);
+const Ticket = require("./ticket")(sequelize, Sequelize.DataTypes);
+const TicketReply = require("./ticketReply")(sequelize, Sequelize.DataTypes);
 const TicketImage = require("./TicketImage")(sequelize, Sequelize.DataTypes);
 const SLA = require("./SLA")(sequelize, Sequelize.DataTypes);
 const Document = require("./Document")(sequelize, Sequelize.DataTypes);

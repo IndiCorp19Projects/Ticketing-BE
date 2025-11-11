@@ -38,7 +38,7 @@ app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://localhost:3001",'http://192.168.1.7:3000'],
+    origin: ["http://148.135.138.69:2512","http://148.135.138.69:2511","http://148.135.138.69:6963", "http://148.135.138.69:6969", "http://localhost:3000", "http://localhost:3001", 'http://192.168.1.7:3000'],
     credentials: true,
   })
 );
@@ -122,8 +122,8 @@ app.post("/api/calculateTime", async (req, res) => {
       const endTime = isEndDate
         ? dateEnd
         : dateEnd < workEnd
-        ? dateEnd
-        : workEnd;
+          ? dateEnd
+          : workEnd;
 
       const diffMs = endTime - startTime;
       if (diffMs <= 0) return 0;
