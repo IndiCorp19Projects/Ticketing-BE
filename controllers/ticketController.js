@@ -350,7 +350,7 @@ exports.execGetAssignedTickets = async (req, res) => {
         }
       ],
       order: [
-        [{ model: TicketReply, as: 'replies' }, 'created_at', 'ASC'],
+        [{ model: TicketReply, as: 'replies' }, 'created_at', 'DESC'],
         ['created_at', 'DESC']
       ]
     });
@@ -379,7 +379,10 @@ exports.execGetAssignedTickets = async (req, res) => {
             }
           }
 
-          plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+          // plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+        plain.replies.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
         }
 
         const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
@@ -454,7 +457,8 @@ exports.getTicketById = async (req, res) => {
       }
 
       // JS fallback sort to guarantee order
-      plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      // plain.replies.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      plain.replies.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     }
 
     const { response_sla_met, resolve_sla_met, sla } = await computeSLACompliance(plain);
