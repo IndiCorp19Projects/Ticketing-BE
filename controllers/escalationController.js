@@ -77,6 +77,77 @@ exports.getEscalationLevels = async (req, res) => {
   }
 };
 
+// exports.GetEscalateInfo = async (req, res) => {
+//   try {
+//     const {
+//       resolved_at,
+//       sla_resolve_datetime,
+//       sla_response_datetime,
+//       response_at,
+//     } = req.body;
+//     const { client_id } = req.client_user;
+
+//     let escalateLevel = null;
+
+//     const nowTime = new Date();
+//     const indiaTime = new Date(nowTime.getTime() + 5.5 * 60 * 60 * 1000);
+
+//     if (resolved_at === null && new Date(sla_resolve_datetime) < indiaTime) {
+//       const escalateLevels = await EscalationLevel.findAll({
+//         where: { client_id: client_id, is_active: true },
+//         order: [["level_number", "ASC"]],
+//         raw: true,
+//       });
+//       const hours = await calculateWorkingHours(
+//         new Date(sla_resolve_datetime),
+//         indiaTime
+//       );
+//       escalateLevel = getEscalationLevel(Math.floor(hours?.totalWorkingHours), escalateLevels);
+//       console.log("Escalate Levels:", escalateLevel);
+//     } else if (
+//       response_at === null &&
+//       new Date(sla_response_datetime) < indiaTime
+//     ) {
+//       const escalateLevels = await EscalationLevel.findAll({
+//         where: { client_id: client_id, is_active: true },
+//         order: [["level_number", "ASC"]],
+//         raw: true,
+//       });
+//       const hours = await calculateWorkingHours(
+//         new Date(sla_response_datetime),
+//         indiaTime
+//       );
+//       escalateLevel = getEscalationLevel(Math.floor(hours?.totalWorkingHours), escalateLevels);
+//       console.log("Escalate Levels:", escalateLevel, escalateLevels, hours);
+//     } else {
+//       return res.json({
+//         success: false,
+//       });
+//     }
+
+//     if (escalateLevel?.default_assignee_id) {
+//       const user = await User.findByPk(escalateLevel.default_assignee_id, {
+//         attributes: ["username", "first_name", "last_name", "email"],
+//         raw: true,
+//       });
+//       console.log("Sdafdsaf", user, escalateLevel);
+//       escalateLevel.assigned_user = user;
+//     }
+
+//     return res.json({
+//       success: true,
+//       message: `successfully`,
+//       data: escalateLevel,
+//     });
+//   } catch (error) {
+//     console.error("Escalate ticket error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//     });
+//   }
+// };
+
 exports.GetEscalateInfo = async (req, res) => {
   try {
     const {
@@ -136,7 +207,7 @@ exports.GetEscalateInfo = async (req, res) => {
 
     return res.json({
       success: true,
-      message: `successfully`,
+      message: successfully,
       data: escalateLevel,
     });
   } catch (error) {
@@ -147,6 +218,7 @@ exports.GetEscalateInfo = async (req, res) => {
     });
   }
 };
+
 
 /**
  * Escalate ticket with base64 image support and CC/BCC
