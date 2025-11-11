@@ -101,7 +101,7 @@ exports.GetEscalateInfo = async (req, res) => {
         new Date(sla_resolve_datetime),
         indiaTime
       );
-      escalateLevel = getEscalationLevel(Math.floor(hours), escalateLevels);
+      escalateLevel = getEscalationLevel(Math.floor(hours?.totalWorkingHours), escalateLevels);
       console.log("Escalate Levels:", escalateLevel);
     } else if (
       response_at === null &&
@@ -110,13 +110,14 @@ exports.GetEscalateInfo = async (req, res) => {
       const escalateLevels = await EscalationLevel.findAll({
         where: { client_id: client_id, is_active: true },
         order: [["level_number", "ASC"]],
+        raw: true,
       });
       const hours = await calculateWorkingHours(
         new Date(sla_response_datetime),
         indiaTime
       );
-      escalateLevel = getEscalationLevel(Math.floor(hours), escalateLevels);
-      console.log("Escalate Levels:", escalateLevel);
+      escalateLevel = getEscalationLevel(Math.floor(hours?.totalWorkingHours), escalateLevels);
+      console.log("Escalate Levels:", escalateLevel, escalateLevels, hours);
     } else {
       return res.json({
         success: false,
@@ -127,7 +128,7 @@ exports.GetEscalateInfo = async (req, res) => {
       const user = await User.findByPk(escalateLevel.default_assignee_id, {
         attributes: ["username", "first_name", "last_name", "email"],
       });
-      escalateLevel.dataValues.assigned_user = user;
+      escalateLevel.assigned_user = user;
     }
 
     return res.json({
