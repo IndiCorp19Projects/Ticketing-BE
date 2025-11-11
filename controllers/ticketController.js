@@ -5003,6 +5003,78 @@ exports.getDocument = async (req, res) => {
 
 
 // Get ticket change logs
+// exports.getTicketChangeLogs = async (req, res) => {
+//   try {
+//     const { ticketId } = req.params;
+
+//     const ticket = await Ticket.findByPk(ticketId);
+//     if (!ticket) {
+//       return res.status(404).json({ message: 'Ticket not found' });
+//     }
+
+//     // Get all replies that have changes (flag_log = true)
+//     const changeLogs = await TicketReply.findAll({
+//       where: {
+//         ticket_id: ticketId,
+//         flag_log: true
+//       },
+//       order: [['created_at', 'DESC']],
+//       attributes: [
+//         'reply_id',
+//         'sender_type',
+//         'client_sender_name',
+//         'message',
+//         'status',
+//         'assigned_to',
+//         'priority',
+//         'assigned_client_user_id',
+//         'change_log',
+//         'created_at'
+//       ]
+//     });
+
+//     // Format the response with actual field values
+//     const formattedLogs = await Promise.all(changeLogs.map(async (log) => {
+//       const logData = log.toJSON ? log.toJSON() : log;
+      
+//       // Get assignee name if assigned_to exists
+//       let assigneeName = null;
+//       if (logData.assigned_to) {
+//         const assignee = await User.findByPk(logData.assigned_to);
+//         assigneeName = assignee ? assignee.username : null;
+//       }
+
+//       return {
+//         id: logData.reply_id,
+//         sender: logData.client_sender_name || 'System',
+//         sender_type: logData.sender_type,
+//         message: logData.message,
+//         field_values: {
+//           status: logData.status,
+//           assigned_to: logData.assigned_to,
+//           assignee_name: assigneeName,
+//           priority: logData.priority,
+//           assigned_client_user_id: logData.assigned_client_user_id
+//         },
+//         changes: logData.change_log,
+//         timestamp: logData.created_at
+//       };
+//     }));
+
+//     return res.status(200).json({
+//       message: 'Change logs retrieved successfully',
+//       ticket_id: parseInt(ticketId),
+//       change_logs: formattedLogs,
+//       total_changes: formattedLogs.length
+//     });
+
+//   } catch (err) {
+//     console.error('getTicketChangeLogs error:', err);
+//     return res.status(500).json({ message: 'Internal server error: ' + err.message });
+//   }
+// };
+
+
 exports.getTicketChangeLogs = async (req, res) => {
   try {
     const { ticketId } = req.params;
@@ -5024,6 +5096,7 @@ exports.getTicketChangeLogs = async (req, res) => {
         'sender_type',
         'client_sender_name',
         'message',
+        'log_message',
         'status',
         'assigned_to',
         'priority',
@@ -5049,6 +5122,7 @@ exports.getTicketChangeLogs = async (req, res) => {
         sender: logData.client_sender_name || 'System',
         sender_type: logData.sender_type,
         message: logData.message,
+        log_message:logData.log_message,
         field_values: {
           status: logData.status,
           assigned_to: logData.assigned_to,
