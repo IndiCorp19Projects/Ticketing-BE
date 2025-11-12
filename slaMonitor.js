@@ -38,20 +38,20 @@ cron.schedule("*/10 * * * *", async () => {
 
         await sendMail({
           to: client?.email || "john.doe@example.com",
-          subject: `⚠️ SLA Response Warning: Ticket #${ticket.id}`,
-          text: `Ticket #${ticket.id} is approaching its SLA response deadline.`,
+          subject: `⚠️ SLA Response Warning: Ticket #TCKT-${ticket.ticket_id}`,
+          text: `Ticket #TCKT-${ticket.ticket_id} is approaching its SLA response deadline.`,
           html: `<p>Dear Team,</p>
-               <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>response SLA</strong> within 10 minutes.</p>
+               <p>The ticket <strong>#TCKT-${ticket.ticket_id}</strong> will breach its <strong>response SLA</strong> within 10 minutes.</p>
                <p>Please take action immediately.</p>`,
         });
 
         await slaBreachmailLogModel.create({
           ticket_id: ticket.ticket_id,
           to: client?.email || "john.doe@example.com",
-          subject: `⚠️ SLA Response Warning: Ticket #${ticket.id}`,
-          text: `Ticket #${ticket.id} is approaching its SLA response deadline.`,
+          subject: `⚠️ SLA Response Warning: Ticket #TCKT-${ticket.ticket_id}`,
+          text: `Ticket #TCKT-${ticket.ticket_id} is approaching its SLA response deadline.`,
           html: `<p>Dear Team,</p>
-               <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>response SLA</strong> within 10 minutes.</p>
+               <p>The ticket <strong>#TCKT-${ticket.ticket_id}</strong> will breach its <strong>response SLA</strong> within 10 minutes.</p>
                <p>Please take action immediately.</p>`,
         });
       }
@@ -60,24 +60,24 @@ cron.schedule("*/10 * * * *", async () => {
 
       await sendMail({
         to: user?.email || "john.doe@example.com",
-        subject: `⚠️ SLA Response Warning: Ticket #${ticket.id}`,
-        text: `Ticket #${ticket.id} is approaching its SLA response deadline.`,
+        subject: `⚠️ SLA Response Warning: Ticket #TCKT-${ticket.ticket_id}`,
+        text: `Ticket #TCKT-${ticket.ticket_id} is approaching its SLA response deadline.`,
         html: `<p>Dear Team,</p>
-               <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>response SLA</strong> within 10 minutes.</p>
+               <p>The ticket <strong>#TCKT-${ticket.ticket_id}</strong> will breach its <strong>response SLA</strong> within 10 minutes.</p>
                <p>Please take action immediately.</p>`,
       });
 
       await slaBreachmailLogModel.create({
         ticket_id: ticket.ticket_id,
         to: user?.email || "john.doe@example.com",
-        subject: `⚠️ SLA Response Warning: Ticket #${ticket.id}`,
-        text: `Ticket #${ticket.id} is approaching its SLA response deadline.`,
+        subject: `⚠️ SLA Response Warning: Ticket #TCKT-${ticket.ticket_id}`,
+        text: `Ticket #TCKT-${ticket.ticket_id} is approaching its SLA response deadline.`,
         html: `<p>Dear Team,</p>
-               <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>response SLA</strong> within 10 minutes.</p>
+               <p>The ticket <strong>#TCKT-${ticket.ticket_id}</strong> will breach its <strong>response SLA</strong> within 10 minutes.</p>
                <p>Please take action immediately.</p>`,
       });
 
-      console.log(`📧 SLA Response Warning sent for Ticket #${ticket.id}`);
+      console.log(`📧 SLA Response Warning sent for Ticket #TCKT-${ticket.ticket_id}`);
     }
 
     // 4️⃣ Send mails for resolve SLA
@@ -87,20 +87,20 @@ cron.schedule("*/10 * * * *", async () => {
 
         await sendMail({
           to: client?.email || "john.doe@example.com",
-          subject: `⚠️ SLA Resolution Warning: Ticket #${ticket.id}`,
-          text: `Ticket #${ticket.id} is approaching its SLA resolution deadline.`,
+          subject: `⚠️ SLA Resolution Warning: Ticket #TCKT-${ticket.ticket_id}`,
+          text: `Ticket #TCKT-${ticket.ticket_id} is approaching its SLA resolution deadline.`,
           html: `<p>Dear Team,</p>
-               <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>resolution SLA</strong> within 10 minutes.</p>
+               <p>The ticket <strong>#TCKT-${ticket.ticket_id}</strong> will breach its <strong>resolution SLA</strong> within 10 minutes.</p>
                <p>Please resolve it as soon as possible.</p>`,
         });
 
         await slaBreachmailLogModel.create({
           ticket_id: ticket.ticket_id,
           to: client?.email || "john.doe@example.com",
-          subject: `⚠️ SLA Resolution Warning: Ticket #${ticket.id}`,
-          text: `Ticket #${ticket.id} is approaching its SLA resolution deadline.`,
+          subject: `⚠️ SLA Resolution Warning: Ticket #TCKT-${ticket.ticket_id}`,
+          text: `Ticket #TCKT-${ticket.ticket_id} is approaching its SLA resolution deadline.`,
           html: `<p>Dear Team,</p>
-               <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>resolution SLA</strong> within 10 minutes.</p>
+               <p>The ticket <strong>#TCKT-${ticket.ticket_id}</strong> will breach its <strong>resolution SLA</strong> within 10 minutes.</p>
                <p>Please resolve it as soon as possible.</p>`,
         });
       }
@@ -109,24 +109,24 @@ cron.schedule("*/10 * * * *", async () => {
 
       await sendMail({
         to: user?.email || "john.doe@example.com",
-        subject: `⚠️ SLA Resolution Warning: Ticket #${ticket.id}`,
-        text: `Ticket #${ticket.id} is approaching its SLA resolution deadline.`,
+        subject: `⚠️ SLA Resolution Warning: Ticket #TCKT-${ticket.ticket_id}`,
+        text: `Ticket #TCKT-${ticket.ticket_id} is approaching its SLA resolution deadline.`,
         html: `<p>Dear Team,</p>
-               <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>resolution SLA</strong> within 10 minutes.</p>
+               <p>The ticket <strong>#TCKT-${ticket.ticket_id}</strong> will breach its <strong>resolution SLA</strong> within 10 minutes.</p>
                <p>Please resolve it as soon as possible.</p>`,
       });
 
       await slaBreachmailLogModel.create({
         ticket_id: ticket.ticket_id,
         to: user?.email || "john.doe@example.com",
-        subject: `⚠️ SLA Resolution Warning: Ticket #${ticket.id}`,
-        text: `Ticket #${ticket.id} is approaching its SLA resolution deadline.`,
+        subject: `⚠️ SLA Resolution Warning: Ticket #TCKT-${ticket.ticket_id}`,
+        text: `Ticket #TCKT-${ticket.ticket_id} is approaching its SLA resolution deadline.`,
         html: `<p>Dear Team,</p>
-               <p>The ticket <strong>#${ticket.id}</strong> will breach its <strong>resolution SLA</strong> within 10 minutes.</p>
+               <p>The ticket <strong>#TCKT-${ticket.ticket_id}</strong> will breach its <strong>resolution SLA</strong> within 10 minutes.</p>
                <p>Please resolve it as soon as possible.</p>`,
       });
 
-      console.log(`📧 SLA Resolution Warning sent for Ticket #${ticket.id}`);
+      console.log(`📧 SLA Resolution Warning sent for Ticket #TCKT-${ticket.ticket_id}`);
     }
 
     console.log("✅ SLA warning check completed.");
