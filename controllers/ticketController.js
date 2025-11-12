@@ -4243,9 +4243,11 @@ exports.replyToTicket = async (req, res) => {
             await t.rollback();
             return res.status(400).json({ message: 'Assignee user not found' });
           }
-          if (execUser.role_name !== 'executive') {
+
+          // console.log('Assignee role check:', { assigneeId: assignedId, role: execUser.role_name ,username:execUser.username });
+          if (execUser.role_name !== 'executive' && execUser.role_name !== 'admin') {
             await t.rollback();
-            return res.status(400).json({ message: 'Assignee must be an executive' });
+            return res.status(400).json({ message: 'Assignee must be an executive and admin' });
           }
           assignedUserName = execUser.username;
         } else {

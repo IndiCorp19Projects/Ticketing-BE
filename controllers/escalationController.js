@@ -352,7 +352,7 @@ exports.escalateTicket = async (req, res) => {
         image_base64: processedImageBase64, // Store base64 directly in the escalation table
         cc_emails: cc, // Store CC emails
         bcc_emails: bcc, // Store BCC emails
-        status: "pending",
+        // status: "pending",
       },
       { transaction }
     );

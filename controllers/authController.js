@@ -3,7 +3,7 @@ const { User } = require('../models');
 const generateUniqueUsername = require('../utils/usernameGenerator');
 const pwd = require('../utils/passwordHashing');
 const { jwtSecret } = require('../config/config');
-
+const { Op } = require('sequelize');
 
 exports.signup = async (req, res) => {
   try {
@@ -95,7 +95,10 @@ exports.me = async (req, res) => {
 exports.getExecutives = async (req, res) => {
   try {
     const executives = await User.findAll({
-      where: { role_name: 'executive' },
+      // where: { role_name: 'executive' },
+        where:{role_name: {
+          [Op.or]: ['executive', 'admin'],
+        }},
       attributes: ['user_id', 'username', 'email', 'role_name'],
     });
 

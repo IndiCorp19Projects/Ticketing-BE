@@ -174,8 +174,13 @@ exports.getAllAgentsPerformance = async (req, res) => {
   try {
     const { startDate, endDate, periodType = 'monthly' } = req.query;
     
-    let start = startDate ? new Date(startDate) : new Date();
-    let end = endDate ? new Date(endDate) : new Date();
+    // let start = startDate ? new Date(startDate) : new Date();
+    // let end = endDate ? new Date(endDate) : new Date();
+
+
+        let start =  new Date();
+    let end =  new Date();
+
 
     // Get all agents (executives and admins)
     const agents = await User.findAll({

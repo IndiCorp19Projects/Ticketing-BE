@@ -254,6 +254,9 @@ app.use('/api/client/slas', clientSLARoutes);
 const escalationLevelRoutes = require('./routes/escalationLevels');
 app.use('/api/admin/escalation-levels', escalationLevelRoutes);
 
+const agentPerformance = require('./routes/agentPerformance');
+app.use('/api/admin/agentPerformance', agentPerformance);
+
 
 app.use((err, req, res, next) => {
   console.error("Unhandled error", err);
