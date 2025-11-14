@@ -138,11 +138,12 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   User.associate = (models) => {
+      User.hasMany(models.Ticket, { 
+    foreignKey: 'assigned_to', 
+    as: 'assignedTickets' 
+  });
     User.hasMany(models.Ticket, { foreignKey: 'user_id', as: 'tickets' });
     User.hasMany(models.TicketReply, { foreignKey: 'sender_id', as: 'sentReplies' });
-
-
-
     // Add Exception associations
     User.hasMany(models.Exception, { foreignKey: 'created_by', as: 'createdExceptions' });
     User.hasMany(models.Exception, { foreignKey: 'updated_by', as: 'updatedExceptions' });

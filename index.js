@@ -257,6 +257,10 @@ app.use('/api/admin/escalation-levels', escalationLevelRoutes);
 const agentPerformance = require('./routes/agentPerformance');
 app.use('/api/admin/agentPerformance', agentPerformance);
 
+// app.js or index.js
+const performanceRoutes = require('./routes/performance');
+app.use('/api/performance', performanceRoutes);
+
 
 app.use((err, req, res, next) => {
   console.error("Unhandled error", err);

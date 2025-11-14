@@ -3989,6 +3989,580 @@ exports.raiseTicket = async (req, res) => {
 // };
 
 
+// this is at 12:08 11/14
+
+// exports.replyToTicket = async (req, res) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     const { ticketId } = req.params;
+//     const {
+//       message: rawMessage,
+//       status: requestedStatus,
+//       screenshot_url,
+//       assigned_to,
+//       priority: requestedPriority,
+//       assigned_client_user_id
+//     } = req.body;
+
+//     const files = req.files && Array.isArray(req.files) ? req.files : [];
+
+//     // ========== AUTHENTICATION HANDLING ==========
+//     let sender_type = 'user';
+//     let senderId = null;
+//     let senderName = null;
+//     let userRole = null;
+//     let isClient = false;
+
+//     console.log('Authentication debug:', {
+//       hasUser: !!req.user,
+//       hasClient: !!req.client,
+//       user: req.user ? { id: req.user.id, username: req.user.username, role: req.user.role_name } : null,
+//       client: req.client ? { id: req.client.id, company_name: req.client.company_name } : null
+//     });
+
+//     // Check client first
+//     if (req.client && req.client.id && req.client.company_name) {
+//       sender_type = 'client';
+//       senderId = req.client.id;
+//       senderName = req.client.company_name;
+//       userRole = req.client.role || 'user';
+//       isClient = true;
+//       console.log(`Client reply - Client ID: ${senderId}, Name: ${senderName}, Role: ${userRole}`);
+//     }
+//     // Then check user
+//     else if (req.user && req.user.id && req.user.username) {
+//       userRole = req.user.role_name;
+//       if (userRole === 'admin' || userRole === 'executive') {
+//         sender_type = 'admin';
+//       } else {
+//         sender_type = 'user';
+//       }
+//       senderId = req.user.id || req.user.user_id;
+//       senderName = req.user.username;
+//       console.log(`User reply - User ID: ${senderId}, Role: ${userRole}, Name: ${senderName}`);
+//     } else {
+//       await t.rollback();
+//       return res.status(401).json({ message: 'Unauthorized - No valid authentication found' });
+//     }
+
+//     // Validate senderId exists
+//     if (!senderId || !senderName) {
+//       await t.rollback();
+//       console.error('Invalid sender data:', { senderId, senderName, reqUser: req.user, reqClient: req.client });
+//       return res.status(400).json({ message: 'Unable to determine sender identity' });
+//     }
+
+//     // ========== PERMISSION CHECK ==========
+//     const canChangeStatus = 
+//       (userRole === 'admin') || 
+//       (userRole === 'executive') || 
+//       (isClient && (userRole === 'admin' || userRole === 'user'));
+
+//     const canChangeAssignment = 
+//       (userRole === 'admin') || 
+//       (isClient && userRole === 'admin');
+
+//     const canChangePriority = 
+//       (userRole === 'admin');
+
+//     const canChangeClientAssignment = 
+//       (isClient && userRole === 'admin');
+
+//     // Check if we have any action to perform
+//     const hasMessage = rawMessage && String(rawMessage).trim() !== '';
+//     const hasFiles = files.length > 0;
+//     const hasStatusAction = requestedStatus && String(requestedStatus).trim() !== '';
+//     const hasAssignAction = (assigned_to !== undefined && assigned_to !== null && String(assigned_to).trim() !== '');
+//     const hasPriorityAction = (requestedPriority !== undefined && requestedPriority !== null && String(requestedPriority).trim() !== '');
+//     const hasClientAssignAction = (assigned_client_user_id !== undefined && assigned_client_user_id !== null && String(assigned_client_user_id).trim() !== '');
+
+//     if (
+//       !hasMessage &&
+//       !hasFiles &&
+//       !hasStatusAction &&
+//       !screenshot_url &&
+//       !hasAssignAction &&
+//       !hasPriorityAction &&
+//       !hasClientAssignAction
+//     ) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         message: 'At least one of message / files / status / screenshot_url / assigned_to / priority / assigned_client_user_id is required'
+//       });
+//     }
+
+//     // Get current ticket state BEFORE any changes
+//     const ticket = await Ticket.findByPk(ticketId, { transaction: t });
+//     if (!ticket) {
+//       await t.rollback();
+//       return res.status(404).json({ message: 'Ticket not found' });
+//     }
+
+//     // Basic permission check to reply
+//     if (!(await ensureCanReply(req, ticket))) {
+//       await t.rollback();
+//       return res.status(403).json({ message: 'Forbidden' });
+//     }
+
+//     // ========== CHECK FOR SAME ASSIGNMENT ==========
+//     if (hasAssignAction) {
+//       if (!canChangeAssignment) {
+//         await t.rollback();
+//         return res.status(403).json({ message: 'You are not allowed to change assignment' });
+//       }
+
+//       // Handle unassignment (if assigned_to is empty/null)
+//       if (assigned_to === null || assigned_to === '' || assigned_to === 'null') {
+//         // This is allowed - unassigning from current user
+//       } else {
+//         const assignedId = parseInt(assigned_to, 10);
+//         if (Number.isNaN(assignedId)) {
+//           await t.rollback();
+//           return res.status(400).json({ message: 'Invalid assigned_to value' });
+//         }
+
+//         // Check if ticket is already assigned to the same user
+//         if (ticket.assigned_to === assignedId) {
+//           await t.rollback();
+//           return res.status(400).json({ 
+//             message: 'Ticket is already assigned to this user. Please select a different user or leave assignment unchanged.',
+//             code: 'SAME_ASSIGNMENT_ERROR'
+//           });
+//         }
+//       }
+//     }
+
+//     const now = new Date();
+//     const changes = {};
+//     let hasChanges = false;
+
+//     // Store field values for TicketReply (will be null if not changed)
+//     const replyFields = {
+//       status: null,
+//       assigned_to: null,
+//       priority: null,
+//       assigned_client_user_id: null,
+//       assigned_to_user_name: null
+//     };
+
+//     // ========== TRACK STATUS CHANGES ==========
+//     if (hasStatusAction) {
+//       if (!canChangeStatus) {
+//         await t.rollback();
+//         return res.status(403).json({ message: 'You are not allowed to change status' });
+//       }
+
+//       const newStatus = String(requestedStatus).trim();
+//       const allowedStatuses = ['Open', 'Pending', 'Resolved', 'Closed'];
+      
+//       if (!allowedStatuses.includes(newStatus)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
+//       }
+
+//       if (ticket.status !== newStatus) {
+//         changes.status = {
+//           from: ticket.status,
+//           to: newStatus
+//         };
+//         hasChanges = true;
+//         replyFields.status = newStatus;
+        
+//         ticket.prev_status = ticket.status;
+//         ticket.status = newStatus;
+//         ticket.last_updated_by = senderName;
+//         ticket.updated_at = now;
+
+//         if ((newStatus === 'Resolved' || newStatus === 'Closed') && !ticket.resolved_at) {
+//           ticket.resolved_at = now;
+//           const responseTime = await calculateWorkingHours(ticket.created_at, now);
+//           ticket.resolve_time_seconds = responseTime?.totalWorkingHours;
+//         }
+//       }
+//     }
+
+//     // ========== TRACK ASSIGNMENT CHANGES ==========
+//     if (hasAssignAction) {
+//       // Handle unassignment (if assigned_to is empty/null)
+//       if (assigned_to === null || assigned_to === '' || assigned_to === 'null') {
+//         if (ticket.assigned_to !== null) {
+//           let currentAssignedUserName = null;
+          
+//           // Get current assigned user's name
+//           if (ticket.assigned_to) {
+//             const currentAssignedUser = await User.findByPk(ticket.assigned_to, { 
+//               attributes: ['user_id', 'username'],
+//               transaction: t 
+//             });
+//             currentAssignedUserName = currentAssignedUser ? currentAssignedUser.username : `User ${ticket.assigned_to}`;
+//           } else {
+//             currentAssignedUserName = 'Unassigned';
+//           }
+
+//           changes.assigned_to = {
+//             from: ticket.assigned_to,
+//             to: null,
+//             from_username: currentAssignedUserName,
+//             to_username: 'Unassigned'
+//           };
+//           hasChanges = true;
+//           replyFields.assigned_to = null;
+//           replyFields.assigned_to_user_name = null;
+          
+//           ticket.assigned_to = null;
+//           ticket.assigned_to_user_name = null;
+//           ticket.last_updated_by = senderName;
+//           ticket.updated_at = now;
+//         }
+//       } else {
+//         // Handle assignment to a user (we already checked it's not the same user above)
+//         const assignedId = parseInt(assigned_to, 10);
+        
+//         let assignedUserName = null;
+//         let currentAssignedUserName = null;
+        
+//         // Get current assigned user's name (for "from" part)
+//         if (ticket.assigned_to) {
+//           const currentAssignedUser = await User.findByPk(ticket.assigned_to, { 
+//             attributes: ['user_id', 'username'],
+//             transaction: t 
+//           });
+//           currentAssignedUserName = currentAssignedUser ? currentAssignedUser.username : `User ${ticket.assigned_to}`;
+//         } else {
+//           // FIRST TIME ASSIGNMENT: Use the admin's name who is making the assignment
+//           currentAssignedUserName = senderName;
+//         }
+
+//         // Get new assigned user's name (for "to" part)
+//         if (!isClient) {
+//           const execUser = await User.findByPk(assignedId, { 
+//             attributes: ['user_id', 'username', 'role_name'],
+//             transaction: t 
+//           });
+//           if (!execUser) {
+//             await t.rollback();
+//             return res.status(400).json({ message: 'Assignee user not found' });
+//           }
+
+//           // console.log('Assignee role check:', { assigneeId: assignedId, role: execUser.role_name ,username:execUser.username });
+//           if (execUser.role_name !== 'executive' && execUser.role_name !== 'admin') {
+//             await t.rollback();
+//             return res.status(400).json({ message: 'Assignee must be an executive and admin' });
+//           }
+//           assignedUserName = execUser.username;
+//         } else {
+//           // For client assignments
+//           const assignedUser = await User.findByPk(assignedId, { 
+//             attributes: ['user_id', 'username'],
+//             transaction: t 
+//           });
+//           if (assignedUser) {
+//             assignedUserName = assignedUser.username;
+//           } else {
+//             assignedUserName = `User ${assignedId}`; // Fallback
+//           }
+//         }
+
+//         changes.assigned_to = {
+//           from: ticket.assigned_to,
+//           to: assignedId,
+//           from_username: currentAssignedUserName,
+//           to_username: assignedUserName
+//         };
+//         hasChanges = true;
+//         replyFields.assigned_to = assignedId;
+//         replyFields.assigned_to_user_name = assignedUserName;
+        
+//         ticket.assigned_to = assignedId;
+//         ticket.assigned_to_user_name = assignedUserName;
+//         ticket.last_updated_by = senderName;
+//         ticket.updated_at = now;
+//       }
+//     }
+
+//     // ========== TRACK PRIORITY CHANGES ==========
+//     if (hasPriorityAction) {
+//       if (!canChangePriority) {
+//         await t.rollback();
+//         return res.status(403).json({ message: 'You are not allowed to change priority' });
+//       }
+
+//       const newPriority = String(requestedPriority).trim();
+//       const validPriorities = ['low', 'medium', 'high', 'critical', 'urgent'];
+      
+//       if (!validPriorities.includes(newPriority)) {
+//         await t.rollback();
+//         return res.status(400).json({ message: `Invalid priority. Allowed: ${validPriorities.join(', ')}` });
+//       }
+
+//       if (ticket.priority !== newPriority) {
+//         changes.priority = {
+//           from: ticket.priority,
+//           to: newPriority
+//         };
+//         hasChanges = true;
+//         replyFields.priority = newPriority;
+        
+//         ticket.priority = newPriority;
+//         ticket.last_updated_by = senderName;
+//         ticket.updated_at = now;
+//       }
+//     }
+
+//     // ========== TRACK CLIENT USER ASSIGNMENT CHANGES ==========
+//     if (hasClientAssignAction) {
+//       if (!canChangeClientAssignment) {
+//         await t.rollback();
+//         return res.status(403).json({ message: 'You are not allowed to change client assignment' });
+//       }
+
+//       const newClientUserId = String(assigned_client_user_id).trim();
+      
+//       if (ticket.assigned_client_user_id !== newClientUserId) {
+//         changes.assigned_client_user_id = {
+//           from: ticket.assigned_client_user_id,
+//           to: newClientUserId
+//         };
+//         hasChanges = true;
+//         replyFields.assigned_client_user_id = newClientUserId;
+        
+//         ticket.assigned_client_user_id = newClientUserId;
+//         ticket.last_updated_by = senderName;
+//         ticket.updated_at = now;
+//       }
+//     }
+
+//     // Update response time if first admin reply
+//     if (req.user && req.user.role_name === 'admin' && !ticket.response_at) {
+//       ticket.response_at = now;
+//       const responseTime = await calculateWorkingHours(ticket.created_at, now);
+//       ticket.response_time_seconds = responseTime?.totalWorkingHours;
+//       ticket.last_updated_by = senderName;
+//     }
+
+//     // Update last_updated_by and updated_at even if only changes were made
+//     if (hasChanges) {
+//       ticket.last_updated_by = senderName;
+//       ticket.updated_at = now;
+//     }
+
+//     // Persist ticket changes
+//     await ticket.save({ transaction: t });
+
+//     // ========== CREATE REPLY WITH FIELD VALUES AND CHANGE LOG ==========
+//     const clientMessage = rawMessage ? String(rawMessage).trim() : '';
+//     let systemMessage = null; // Initialize as null
+    
+//     // Build system message for changes if any
+//     if (hasChanges && Object.keys(changes).length > 0) {
+//       const changeMessages = [];
+      
+//       if (changes.status) {
+//         changeMessages.push(`Status changed from ${changes.status.from} to ${changes.status.to}`);
+//       }
+      
+//       if (changes.assigned_to) {
+//         // Use actual usernames from the changes object
+//         const fromUser = changes.assigned_to.from_username;
+//         const toUser = changes.assigned_to.to_username;
+//         changeMessages.push(`Assignment changed from ${fromUser} to ${toUser}`);
+//       }
+      
+//       if (changes.priority) {
+//         changeMessages.push(`Priority changed from ${changes.priority.from} to ${changes.priority.to}`);
+//       }
+      
+//       if (changes.assigned_client_user_id) {
+//         const fromClient = changes.assigned_client_user_id.from || 'Unassigned';
+//         const toClient = changes.assigned_client_user_id.to || 'Unassigned';
+//         changeMessages.push(`Client assignment changed from ${fromClient} to ${toClient}`);
+//       }
+      
+//       systemMessage = `${senderName} made changes: ${changeMessages.join('; ')}`;
+//     }
+
+//     // Create the reply if there's a message, files, screenshot, or changes
+//     const hasUserContent = (rawMessage && String(rawMessage).trim() !== '') || 
+//                           files.length > 0 || 
+//                           screenshot_url;
+
+//     let reply = null;
+//     if (hasUserContent || hasChanges) {
+//       const replyData = {
+//         ticket_id: ticket.ticket_id ?? ticket.id,
+//         sender_id: senderId,
+//         sender_type: sender_type,
+//         client_sender_name: senderName,
+//         message: clientMessage, // Only client message goes here
+//         log_message: systemMessage, // Will be null if no changes
+//         flag_log: hasChanges, // Set to true only if there were changes
+//         change_log: hasChanges ? changes : null // Store the actual changes
+//       };
+
+//       // Add field values to reply (only if they were changed)
+//       if (hasChanges) {
+//         if (replyFields.status) replyData.status = replyFields.status;
+//         if (replyFields.assigned_to) {
+//           replyData.assigned_to = replyFields.assigned_to;
+//           replyData.assigned_to_user_name = replyFields.assigned_to_user_name; // Include username
+//         }
+//         if (replyFields.priority) replyData.priority = replyFields.priority;
+//         if (replyFields.assigned_client_user_id) replyData.assigned_client_user_id = replyFields.assigned_client_user_id;
+//       }
+
+//       reply = await TicketReply.create(replyData, { transaction: t });
+//       console.log(`Created reply with changes: ${hasChanges}`, { 
+//         status: replyFields.status,
+//         assigned_to: replyFields.assigned_to,
+//         assigned_to_user_name: replyFields.assigned_to_user_name,
+//         priority: replyFields.priority,
+//         assigned_client_user_id: replyFields.assigned_client_user_id,
+//         message: clientMessage,
+//         log_message: systemMessage,
+//         flag_log: hasChanges
+//       });
+//     }
+
+//     // Handle file uploads
+//     const createdDocsMeta = [];
+//     if (files.length > 0) {
+//       let replyToAttach = reply;
+//       if (!replyToAttach) {
+//         const replyData = {
+//           ticket_id: ticket.ticket_id ?? ticket.id,
+//           sender_id: senderId,
+//           sender_type: sender_type,
+//           client_sender_name: senderName,
+//           message: '', // Empty client message
+//           log_message: systemMessage, // Will be null if no changes
+//           flag_log: hasChanges,
+//           change_log: hasChanges ? changes : null
+//         };
+
+//         // Add field values even for file-only replies
+//         if (hasChanges) {
+//           if (replyFields.status) replyData.status = replyFields.status;
+//           if (replyFields.assigned_to) {
+//             replyData.assigned_to = replyFields.assigned_to;
+//             replyData.assigned_to_user_name = replyFields.assigned_to_user_name;
+//           }
+//           if (replyFields.priority) replyData.priority = replyFields.priority;
+//           if (replyFields.assigned_client_user_id) replyData.assigned_client_user_id = replyFields.assigned_client_user_id;
+//         }
+
+//         replyToAttach = await TicketReply.create(replyData, { transaction: t });
+//       }
+
+//       const docsToCreate = files.map((file) => {
+//         const b64 = file.buffer ? file.buffer.toString('base64') : null;
+//         const mime = file.mimetype || 'application/octet-stream';
+//         const isImage = mime.startsWith('image/');
+//         return {
+//           linked_id: replyToAttach.reply_id,
+//           table_name: 'ticket_reply',
+//           type: isImage ? 'image' : 'attachment',
+//           doc_name: file.originalname || file.filename || 'upload',
+//           mime_type: mime,
+//           doc_base64: b64,
+//           created_by: senderName,
+//           status: 'active'
+//         };
+//       });
+//       const created = await Document.bulkCreate(docsToCreate, { transaction: t });
+//       created.forEach((d) => {
+//         createdDocsMeta.push({
+//           document_id: d.document_id ?? d.id ?? null,
+//           doc_name: d.doc_name,
+//           mime_type: d.mime_type,
+//           created_on: d.created_on
+//         });
+//       });
+//     }
+
+//     // Handle screenshot
+//     if (screenshot_url) {
+//       const dataUrl = String(screenshot_url);
+//       const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
+//       if (m) {
+//         const mimetype = m[1];
+//         const b64 = m[2];
+//         let replyToAttach = reply;
+//         if (!replyToAttach) {
+//           const replyData = {
+//             ticket_id: ticket.ticket_id ?? ticket.id,
+//             sender_id: senderId,
+//             sender_type: sender_type,
+//             client_sender_name: senderName,
+//             message: '', // Empty client message
+//             log_message: systemMessage, // Will be null if no changes
+//             flag_log: hasChanges,
+//             change_log: hasChanges ? changes : null
+//           };
+
+//           if (hasChanges) {
+//             if (replyFields.status) replyData.status = replyFields.status;
+//             if (replyFields.assigned_to) {
+//               replyData.assigned_to = replyFields.assigned_to;
+//               replyData.assigned_to_user_name = replyFields.assigned_to_user_name;
+//             }
+//             if (replyFields.priority) replyData.priority = replyFields.priority;
+//             if (replyFields.assigned_client_user_id) replyData.assigned_client_user_id = replyFields.assigned_client_user_id;
+//           }
+
+//           replyToAttach = await TicketReply.create(replyData, { transaction: t });
+//         }
+
+//         const doc = await Document.create({
+//           linked_id: replyToAttach.reply_id,
+//           table_name: 'ticket_reply',
+//           type: mimetype.startsWith('image/') ? 'image' : 'attachment',
+//           doc_name: req.body.screenshot_name ?? `upload.${(mimetype.split('/')[1] || 'bin')}`,
+//           mime_type: mimetype,
+//           doc_base64: b64,
+//           created_by: senderName,
+//           status: 'active'
+//         }, { transaction: t });
+
+//         createdDocsMeta.push({
+//           document_id: doc.document_id ?? doc.id ?? null,
+//           doc_name: doc.doc_name,
+//           mime_type: doc.mime_type,
+//           created_on: doc.created_on
+//         });
+//       }
+//     }
+
+//     await t.commit();
+
+//     // Prepare response
+//     const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+
+//     return res.status(201).json({
+//       message: 'Reply added successfully',
+//       reply: {
+//         ...(reply ? (reply.toJSON ? reply.toJSON() : reply) : {}),
+//         has_changes: hasChanges,
+//         changes: changes
+//       },
+//       documents: createdDocsMeta,
+//       ticket: ticketPlain,
+//       changes_made: hasChanges,
+//       user_permissions: {
+//         canChangeStatus,
+//         canChangeAssignment,
+//         canChangePriority,
+//         canChangeClientAssignment
+//       }
+//     });
+
+//   } catch (err) {
+//     console.error('replyToTicket error:', err);
+//     try { await t.rollback(); } catch (e) { 
+//       console.error('Rollback error:', e);
+//     }
+//     return res.status(500).json({ message: 'Internal server error: ' + err.message });
+//   }
+// };
 
 
 exports.replyToTicket = async (req, res) => {
@@ -4104,6 +4678,31 @@ exports.replyToTicket = async (req, res) => {
       return res.status(403).json({ message: 'Forbidden' });
     }
 
+    // ========== BUILD LOG MESSAGES FOR EACH ACTION ==========
+    const actionLogs = [];
+
+    // ========== LOG MESSAGE ADDITION ==========
+    if (hasMessage) {
+      const messagePreview = String(rawMessage).trim().substring(0, 100) + (String(rawMessage).trim().length > 100 ? '...' : '');
+      actionLogs.push(`${senderName} added a reply`);
+    }
+
+    //     if (hasMessage) {
+    //   const messagePreview = String(rawMessage).trim().substring(0, 100) + (String(rawMessage).trim().length > 100 ? '...' : '');
+    //   actionLogs.push(`${senderName} added a reply: "${messagePreview}"`);
+    // }
+
+    // ========== LOG FILE UPLOADS ==========
+    if (hasFiles) {
+      const fileNames = files.map(file => file.originalname || file.filename || 'unnamed file').join(', ');
+      actionLogs.push(`${senderName} uploaded ${files.length} file(s): ${fileNames}`);
+    }
+
+    // ========== LOG SCREENSHOT ADDITION ==========
+    if (screenshot_url) {
+      actionLogs.push(`${senderName} added a screenshot`);
+    }
+
     // ========== CHECK FOR SAME ASSIGNMENT ==========
     if (hasAssignAction) {
       if (!canChangeAssignment) {
@@ -4173,6 +4772,9 @@ exports.replyToTicket = async (req, res) => {
         ticket.last_updated_by = senderName;
         ticket.updated_at = now;
 
+        // Add status change log
+        actionLogs.push(`${senderName} changed status from "${ticket.prev_status}" to "${newStatus}"`);
+
         if ((newStatus === 'Resolved' || newStatus === 'Closed') && !ticket.resolved_at) {
           ticket.resolved_at = now;
           const responseTime = await calculateWorkingHours(ticket.created_at, now);
@@ -4213,6 +4815,9 @@ exports.replyToTicket = async (req, res) => {
           ticket.assigned_to_user_name = null;
           ticket.last_updated_by = senderName;
           ticket.updated_at = now;
+
+          // Add assignment removal log
+          actionLogs.push(`${senderName} unassigned ticket from "${currentAssignedUserName}"`);
         }
       } else {
         // Handle assignment to a user (we already checked it's not the same user above)
@@ -4277,6 +4882,9 @@ exports.replyToTicket = async (req, res) => {
         ticket.assigned_to_user_name = assignedUserName;
         ticket.last_updated_by = senderName;
         ticket.updated_at = now;
+
+        // Add assignment change log
+        actionLogs.push(`${senderName} assigned ticket from "${currentAssignedUserName}" to "${assignedUserName}"`);
       }
     }
 
@@ -4306,6 +4914,9 @@ exports.replyToTicket = async (req, res) => {
         ticket.priority = newPriority;
         ticket.last_updated_by = senderName;
         ticket.updated_at = now;
+
+        // Add priority change log
+        actionLogs.push(`${senderName} changed priority from "${ticket.priority}" to "${newPriority}"`);
       }
     }
 
@@ -4329,6 +4940,11 @@ exports.replyToTicket = async (req, res) => {
         ticket.assigned_client_user_id = newClientUserId;
         ticket.last_updated_by = senderName;
         ticket.updated_at = now;
+
+        // Add client assignment change log
+        const fromClient = ticket.assigned_client_user_id || 'Unassigned';
+        const toClient = newClientUserId || 'Unassigned';
+        actionLogs.push(`${senderName} changed client assignment from "${fromClient}" to "${toClient}"`);
       }
     }
 
@@ -4338,6 +4954,9 @@ exports.replyToTicket = async (req, res) => {
       const responseTime = await calculateWorkingHours(ticket.created_at, now);
       ticket.response_time_seconds = responseTime?.totalWorkingHours;
       ticket.last_updated_by = senderName;
+      
+      // Add response time log
+      // actionLogs.push(`${senderName} provided first response (response time recorded)`);
     }
 
     // Update last_updated_by and updated_at even if only changes were made
@@ -4349,36 +4968,13 @@ exports.replyToTicket = async (req, res) => {
     // Persist ticket changes
     await ticket.save({ transaction: t });
 
-    // ========== CREATE REPLY WITH FIELD VALUES AND CHANGE LOG ==========
+    // ========== CREATE REPLY WITH COMPREHENSIVE LOG MESSAGES ==========
     const clientMessage = rawMessage ? String(rawMessage).trim() : '';
-    let systemMessage = null; // Initialize as null
     
-    // Build system message for changes if any
-    if (hasChanges && Object.keys(changes).length > 0) {
-      const changeMessages = [];
-      
-      if (changes.status) {
-        changeMessages.push(`Status changed from ${changes.status.from} to ${changes.status.to}`);
-      }
-      
-      if (changes.assigned_to) {
-        // Use actual usernames from the changes object
-        const fromUser = changes.assigned_to.from_username;
-        const toUser = changes.assigned_to.to_username;
-        changeMessages.push(`Assignment changed from ${fromUser} to ${toUser}`);
-      }
-      
-      if (changes.priority) {
-        changeMessages.push(`Priority changed from ${changes.priority.from} to ${changes.priority.to}`);
-      }
-      
-      if (changes.assigned_client_user_id) {
-        const fromClient = changes.assigned_client_user_id.from || 'Unassigned';
-        const toClient = changes.assigned_client_user_id.to || 'Unassigned';
-        changeMessages.push(`Client assignment changed from ${fromClient} to ${toClient}`);
-      }
-      
-      systemMessage = `${senderName} made changes: ${changeMessages.join('; ')}`;
+    // Build final system message combining all action logs
+    let systemMessage = null;
+    if (actionLogs.length > 0) {
+      systemMessage = actionLogs.join('; ');
     }
 
     // Create the reply if there's a message, files, screenshot, or changes
@@ -4394,8 +4990,8 @@ exports.replyToTicket = async (req, res) => {
         sender_type: sender_type,
         client_sender_name: senderName,
         message: clientMessage, // Only client message goes here
-        log_message: systemMessage, // Will be null if no changes
-        flag_log: hasChanges, // Set to true only if there were changes
+        log_message: systemMessage, // Comprehensive log of all actions
+        flag_log: hasChanges || hasUserContent, // Set to true if there were any actions
         change_log: hasChanges ? changes : null // Store the actual changes
       };
 
@@ -4411,15 +5007,13 @@ exports.replyToTicket = async (req, res) => {
       }
 
       reply = await TicketReply.create(replyData, { transaction: t });
-      console.log(`Created reply with changes: ${hasChanges}`, { 
+      console.log(`Created reply with actions:`, { 
+        hasChanges,
+        hasUserContent,
+        systemMessage,
         status: replyFields.status,
         assigned_to: replyFields.assigned_to,
-        assigned_to_user_name: replyFields.assigned_to_user_name,
-        priority: replyFields.priority,
-        assigned_client_user_id: replyFields.assigned_client_user_id,
-        message: clientMessage,
-        log_message: systemMessage,
-        flag_log: hasChanges
+        priority: replyFields.priority
       });
     }
 
@@ -4434,8 +5028,8 @@ exports.replyToTicket = async (req, res) => {
           sender_type: sender_type,
           client_sender_name: senderName,
           message: '', // Empty client message
-          log_message: systemMessage, // Will be null if no changes
-          flag_log: hasChanges,
+          log_message: systemMessage, // Will include file upload log
+          flag_log: true, // Since files were uploaded
           change_log: hasChanges ? changes : null
         };
 
@@ -4494,8 +5088,8 @@ exports.replyToTicket = async (req, res) => {
             sender_type: sender_type,
             client_sender_name: senderName,
             message: '', // Empty client message
-            log_message: systemMessage, // Will be null if no changes
-            flag_log: hasChanges,
+            log_message: systemMessage, // Will include screenshot log
+            flag_log: true, // Since screenshot was added
             change_log: hasChanges ? changes : null
           };
 
@@ -4537,16 +5131,40 @@ exports.replyToTicket = async (req, res) => {
     // Prepare response
     const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
 
+    // Build success message based on actions performed
+    let successMessage = 'Action completed successfully';
+    
+    if (hasChanges && hasUserContent) {
+      const changeActions = [];
+      if (changes.status) changeActions.push('status updated');
+      if (changes.assigned_to) changeActions.push('assignment updated');
+      if (changes.priority) changeActions.push('priority updated');
+      if (changes.assigned_client_user_id) changeActions.push('client assignment updated');
+      successMessage = `Ticket ${changeActions.join(' and ')} and reply sent successfully`;
+    } else if (hasChanges) {
+      const changeActions = [];
+      if (changes.status) changeActions.push('status updated');
+      if (changes.assigned_to) changeActions.push('assignment updated');
+      if (changes.priority) changeActions.push('priority updated');
+      if (changes.assigned_client_user_id) changeActions.push('client assignment updated');
+      successMessage = `Ticket ${changeActions.join(' and ')} successfully`;
+    } else if (hasUserContent) {
+      successMessage = 'Reply added successfully';
+    }
+
     return res.status(201).json({
-      message: 'Reply added successfully',
+      message: successMessage,
       reply: {
         ...(reply ? (reply.toJSON ? reply.toJSON() : reply) : {}),
         has_changes: hasChanges,
-        changes: changes
+        has_user_content: hasUserContent,
+        changes: changes,
+        action_logs: actionLogs
       },
       documents: createdDocsMeta,
       ticket: ticketPlain,
       changes_made: hasChanges,
+      action_logs: actionLogs,
       user_permissions: {
         canChangeStatus,
         canChangeAssignment,
@@ -5077,14 +5695,107 @@ exports.getDocument = async (req, res) => {
 // };
 
 
+// exports.getTicketChangeLogs = async (req, res) => {
+//   try {
+//     const { ticketId } = req.params;
+
+//     const ticket = await Ticket.findByPk(ticketId);
+//     if (!ticket) {
+//       return res.status(404).json({ message: 'Ticket not found' });
+//     }
+
+//     // Get all replies that have changes (flag_log = true)
+//     const changeLogs = await TicketReply.findAll({
+//       where: {
+//         ticket_id: ticketId,
+//         flag_log: true
+//       },
+//       order: [['created_at', 'DESC']],
+//       attributes: [
+//         'reply_id',
+//         'sender_type',
+//         'client_sender_name',
+//         'message',
+//         'log_message',
+//         'status',
+//         'assigned_to',
+//         'priority',
+//         'assigned_client_user_id',
+//         'change_log',
+//         'created_at'
+//       ]
+//     });
+
+//     // Format the response with actual field values
+//     const formattedLogs = await Promise.all(changeLogs.map(async (log) => {
+//       const logData = log.toJSON ? log.toJSON() : log;
+      
+//       // Get assignee name if assigned_to exists
+//       let assigneeName = null;
+//       if (logData.assigned_to) {
+//         const assignee = await User.findByPk(logData.assigned_to);
+//         assigneeName = assignee ? assignee.username : null;
+//       }
+
+//       return {
+//         id: logData.reply_id,
+//         sender: logData.client_sender_name || 'System',
+//         sender_type: logData.sender_type,
+//         message: logData.message,
+//         log_message:logData.log_message,
+//         field_values: {
+//           status: logData.status,
+//           assigned_to: logData.assigned_to,
+//           assignee_name: assigneeName,
+//           priority: logData.priority,
+//           assigned_client_user_id: logData.assigned_client_user_id
+//         },
+//         changes: logData.change_log,
+//         timestamp: logData.created_at
+//       };
+//     }));
+
+//     return res.status(200).json({
+//       message: 'Change logs retrieved successfully',
+//       ticket_id: parseInt(ticketId),
+//       change_logs: formattedLogs,
+//       total_changes: formattedLogs.length
+//     });
+
+//   } catch (err) {
+//     console.error('getTicketChangeLogs error:', err);
+//     return res.status(500).json({ message: 'Internal server error: ' + err.message });
+//   }
+// };
+
 exports.getTicketChangeLogs = async (req, res) => {
   try {
     const { ticketId } = req.params;
 
-    const ticket = await Ticket.findByPk(ticketId);
+    // Get ticket with creator information
+    const ticket = await Ticket.findByPk(ticketId, {
+      include: [
+        {
+          model: User,
+          as: 'creator',
+          attributes: ['user_id', 'username', 'email', 'role_name'],
+          required: false
+        },
+        {
+          model: Client,
+          as: 'client',
+          attributes: ['client_id', 'company_name', 'email'],
+          required: false
+        }
+      ]
+    });
+    
     if (!ticket) {
       return res.status(404).json({ message: 'Ticket not found' });
     }
+
+    // Create ticket creation log entry
+    const ticketCreationLog = await formatTicketCreationLog(ticket);
 
     // Get all replies that have changes (flag_log = true)
     const changeLogs = await TicketReply.findAll({
@@ -5092,7 +5803,7 @@ exports.getTicketChangeLogs = async (req, res) => {
         ticket_id: ticketId,
         flag_log: true
       },
-      order: [['created_at', 'DESC']],
+      order: [['created_at', 'ASC']], // Changed to ASC to show chronological order
       attributes: [
         'reply_id',
         'sender_type',
@@ -5103,13 +5814,15 @@ exports.getTicketChangeLogs = async (req, res) => {
         'assigned_to',
         'priority',
         'assigned_client_user_id',
+        'assigned_client_user_name',
+        'assigned_to_user_name',
         'change_log',
         'created_at'
       ]
     });
 
-    // Format the response with actual field values
-    const formattedLogs = await Promise.all(changeLogs.map(async (log) => {
+    // Format the reply change logs
+    const formattedReplyLogs = await Promise.all(changeLogs.map(async (log) => {
       const logData = log.toJSON ? log.toJSON() : log;
       
       // Get assignee name if assigned_to exists
@@ -5121,31 +5834,230 @@ exports.getTicketChangeLogs = async (req, res) => {
 
       return {
         id: logData.reply_id,
+        type: 'update',
         sender: logData.client_sender_name || 'System',
         sender_type: logData.sender_type,
         message: logData.message,
-        log_message:logData.log_message,
+        log_message: logData.log_message,
         field_values: {
           status: logData.status,
           assigned_to: logData.assigned_to,
-          assignee_name: assigneeName,
+          assignee_name: assigneeName || logData.assigned_to_user_name,
           priority: logData.priority,
-          assigned_client_user_id: logData.assigned_client_user_id
+          assigned_client_user_id: logData.assigned_client_user_id,
+          assigned_client_user_name: logData.assigned_client_user_name
         },
         changes: logData.change_log,
         timestamp: logData.created_at
       };
     }));
 
+    // Combine creation log with reply logs
+    const allLogs = [ticketCreationLog, ...formattedReplyLogs];
+
     return res.status(200).json({
       message: 'Change logs retrieved successfully',
       ticket_id: parseInt(ticketId),
-      change_logs: formattedLogs,
-      total_changes: formattedLogs.length
+      change_logs: allLogs,
+      total_changes: allLogs.length,
+      ticket_info: {
+        created_by: ticketCreationLog.sender,
+        created_by_type: ticketCreationLog.sender_type,
+        created_at: ticketCreationLog.timestamp,
+        initial_status: ticket.status,
+        initial_priority: ticket.priority
+      }
     });
 
   } catch (err) {
     console.error('getTicketChangeLogs error:', err);
     return res.status(500).json({ message: 'Internal server error: ' + err.message });
   }
-};
+}
+
+// Helper function to format ticket creation log
+// async function formatTicketCreationLog(ticket) {
+//   const ticketData = ticket.toJSON ? ticket.toJSON() : ticket;
+  
+//   let creatorName = 'Unknown';
+//   let creatorType = 'system';
+//   let creatorDetails = {};
+
+//   // Determine who created the ticket
+//   if (ticketData.user_id && ticketData.creator) {
+//     // Created by internal user
+//     creatorName = ticketData.creator.username || `User ${ticketData.user_id}`;
+//     creatorType = 'user';
+//     creatorDetails = {
+//       user_id: ticketData.creator.user_id,
+//       username: ticketData.creator.username,
+//       role: ticketData.creator.role_name
+//     };
+//   } else if (ticketData.client_id && ticketData.client) {
+//     // Created by client
+//     creatorName = ticketData.client.company_name || `Client ${ticketData.client_id}`;
+//     creatorType = 'client';
+//     creatorDetails = {
+//       client_id: ticketData.client.id,
+//       company_name: ticketData.client.company_name
+//     };
+//   } else if (ticketData.client_user_name) {
+//     // Created by client user
+//     creatorName = ticketData.client_user_name;
+//     creatorType = 'client_user';
+//     creatorDetails = {
+//       client_user_id: ticketData.client_user_id,
+//       client_user_name: ticketData.client_user_name,
+//       client_user_email: ticketData.client_user_email,
+//       client_user_role: ticketData.client_user_role
+//     };
+//   }
+
+//   // Get initial assignee information if exists
+//   let initialAssignee = null;
+//   if (ticketData.assigned_to) {
+//     const assignee = await User.findByPk(ticketData.assigned_to);
+//     initialAssignee = assignee ? assignee.username : `User ${ticketData.assigned_to}`;
+//   }
+
+//   // Build creation message with details
+//   const creationDetails = [];
+//   if (ticketData.category) creationDetails.push(`Category: ${ticketData.category}`);
+//   if (ticketData.sub_module) creationDetails.push(`Module: ${ticketData.sub_module}`);
+//   if (ticketData.priority) creationDetails.push(`Priority: ${ticketData.priority}`);
+//   if (initialAssignee) creationDetails.push(`Assigned to: ${initialAssignee}`);
+
+//   const creationMessage = creationDetails.length > 0 
+//     ? ` with ${creationDetails.join(', ')}`
+//     : '';
+
+//   return {
+//     id: `ticket-${ticketData.ticket_id}`,
+//     type: 'creation',
+//     sender: creatorName,
+//     sender_type: creatorType,
+//     sender_details: creatorDetails,
+//     message: ticketData.comment ? `Initial comment: ${ticketData.comment.substring(0, 200)}${ticketData.comment.length > 200 ? '...' : ''}` : 'No initial comment',
+//     log_message: `${creatorName} created ticket${creationMessage}`,
+//     field_values: {
+//       status: ticketData.status,
+//       assigned_to: ticketData.assigned_to,
+//       assignee_name: initialAssignee,
+//       priority: ticketData.priority,
+//       category: ticketData.category,
+//       sub_module: ticketData.sub_module,
+//       client_user_name: ticketData.client_user_name
+//     },
+//     changes: {
+//       ticket_created: {
+//         by: creatorName,
+//         type: creatorType,
+//         details: creatorDetails,
+//         initial_values: {
+//           status: ticketData.status,
+//           priority: ticketData.priority,
+//           category: ticketData.category,
+//           assigned_to: ticketData.assigned_to
+//         }
+//       }
+//     },
+//     timestamp: ticketData.created_at,
+//     is_creation_event: true
+//   };
+// }
+
+// Helper function to format ticket creation log
+async function formatTicketCreationLog(ticket) {
+  const ticketData = ticket.toJSON ? ticket.toJSON() : ticket;
+  
+  let creatorName = 'Unknown';
+  let creatorType = 'system';
+  let creatorDetails = {};
+
+  // PRIORITIZE client_user_name over other creator types
+  if (ticketData.client_user_name) {
+    // Created by client user - THIS TAKES PRIORITY
+    creatorName = ticketData.client_user_name;
+    creatorType = 'client_user';
+    creatorDetails = {
+      client_user_id: ticketData.client_user_id,
+      client_user_name: ticketData.client_user_name,
+      client_user_email: ticketData.client_user_email,
+      client_user_role: ticketData.client_user_role
+    };
+  } else if (ticketData.user_id && ticketData.creator) {
+    // Created by internal user
+    creatorName = ticketData.creator.username || `User ${ticketData.user_id}`;
+    creatorType = 'user';
+    creatorDetails = {
+      user_id: ticketData.creator.user_id,
+      username: ticketData.creator.username,
+      role: ticketData.creator.role_name
+    };
+  } else if (ticketData.client_id && ticketData.client) {
+    // Created by client
+    creatorName = ticketData.client.company_name || `Client ${ticketData.client_id}`;
+    creatorType = 'client';
+    creatorDetails = {
+      client_id: ticketData.client.id,
+      company_name: ticketData.client.company_name
+    };
+  }
+
+  // Get initial assignee information if exists
+  let initialAssignee = null;
+  if (ticketData.assigned_to) {
+    const assignee = await User.findByPk(ticketData.assigned_to);
+    initialAssignee = assignee ? assignee.username : `User ${ticketData.assigned_to}`;
+  }
+
+  // Build creation message with details
+  const creationDetails = [];
+  if (ticketData.category) creationDetails.push(`Category: ${ticketData.category}`);
+  if (ticketData.sub_module) creationDetails.push(`Module: ${ticketData.sub_module}`);
+  if (ticketData.priority) creationDetails.push(`Priority: ${ticketData.priority}`);
+  if (initialAssignee) creationDetails.push(`Assigned to: ${initialAssignee}`);
+
+  const creationMessage = creationDetails.length > 0 
+    ? ` with ${creationDetails.join(', ')}`
+    : '';
+
+  return {
+    id: `ticket-${ticketData.ticket_id}`,
+    type: 'creation',
+    sender: creatorName,
+    sender_type: creatorType,
+    sender_details: creatorDetails,
+    message: ticketData.comment ? `Initial comment: ${ticketData.comment.substring(0, 200)}${ticketData.comment.length > 200 ? '...' : ''}` : 'No initial comment',
+    // log_message: `${creatorName} created ticket${creationMessage}`,
+    log_message: `${creatorName} created ticket`,
+    field_values: {
+      status: ticketData.status,
+      assigned_to: ticketData.assigned_to,
+      assignee_name: initialAssignee,
+      priority: ticketData.priority,
+      category: ticketData.category,
+      sub_module: ticketData.sub_module,
+      client_user_name: ticketData.client_user_name,
+      client_user_email: ticketData.client_user_email,
+      client_user_role: ticketData.client_user_role
+    },
+    changes: {
+      ticket_created: {
+        by: creatorName,
+        type: creatorType,
+        details: creatorDetails,
+        initial_values: {
+          status: ticketData.status,
+          priority: ticketData.priority,
+          category: ticketData.category,
+          assigned_to: ticketData.assigned_to,
+          client_user_name: ticketData.client_user_name,
+          client_user_email: ticketData.client_user_email
+        }
+      }
+    },
+    timestamp: ticketData.created_at,
+    is_creation_event: true
+  };
+}
