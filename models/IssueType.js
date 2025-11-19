@@ -15,6 +15,7 @@ module.exports = (sequelize, DataTypes) => {
 
   IssueType.associate = (models) => {
     IssueType.belongsTo(models.Priority, { foreignKey: 'priority_id', as: 'default_priority' });
+    IssueType.hasMany(models.ClientSLA, { foreignKey: 'issue_type_id', as: 'issue_clientsla' });
     IssueType.hasMany(models.Ticket, { foreignKey: 'issue_type_id', as: 'tickets' });
     // IssueType.hasMany(models.SLA, { foreignKey: 'issue_type_id', as: 'slas' });
     IssueType.hasOne(models.SLA, {  // Changed from hasMany to hasOne

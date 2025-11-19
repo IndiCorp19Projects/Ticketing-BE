@@ -1,10 +1,12 @@
 // controllers/issueTypeController.js
-const { IssueType, Priority, SLA, User } = require('../models');
+const { IssueType, Priority, SLA, User , ClientSLA  } = require('../models');
 
 
 exports.listIssueTypes = async (req, res) => {
   try {
     const where = { is_active: true };
+
+    const client_id = 1;
 
     const types = await IssueType.findAll({
       where,
@@ -12,9 +14,16 @@ exports.listIssueTypes = async (req, res) => {
         { 
           model: Priority, 
           as: 'default_priority', 
-          attributes: ['priority_id', 'name'] 
+          attributes: ['priority_id', 'name']
+        },
+        { 
+          model: ClientSLA, 
+          as: 'issue_clientsla', 
+          attributes: ['is_active'],
+          where: { is_active: true, client_id },
+          required: true
         }
-        // REMOVED: SLA inclusion since we don't have direct relationship anymore
+       
       ],
       order: [['name', 'ASC']]
     });
