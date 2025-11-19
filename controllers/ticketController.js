@@ -702,236 +702,506 @@ exports.getTicketById = async (req, res) => {
 // };
 
 // User raises ticket
-exports.raiseTicket = async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    console.log('raiseTicket - req.body keys:', Object.keys(req.body));
-    console.log('raiseTicket - req.body:', req.body);
-    console.log('raiseTicket - req.files count:', (req.files && req.files.length) || 0);
+// exports.raiseTicket = async (req, res) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     console.log('raiseTicket - req.body keys:', Object.keys(req.body));
+//     console.log('raiseTicket - req.body:', req.body);
+//     console.log('raiseTicket - req.files count:', (req.files && req.files.length) || 0);
 
-    // Map frontend field names to backend expected names
-    const moduleVal = req.body.category;
-    const sub_module = req.body.subCategory;
-        const clientId = req.body.client_id;
-        const ticket_total_file_size = req.body.ticket_total_file_size;
- const  owner  = req.body.name;
+//     // Map frontend field names to backend expected names
+//     const moduleVal = req.body.category;
+//     const sub_module = req.body.subCategory;
+//         const clientId = req.body.client_id;
+//         const ticket_total_file_size = req.body.ticket_total_file_size;
+//           const  owner  = req.body.name;
 
-    // Store whether this is an "Other" issue type
-    const isOtherIssueType = req.body.issueType === 'Other';
+//     // Store whether this is an "Other" issue type
+//     const isOtherIssueType = req.body.issueType === 'Other';
 
-    // Handle issue type - if it's "Other", use issueName, otherwise use issueType
-    let category = req.body.issueType;
-    let issue_name = null;
+//     // Handle issue type - if it's "Other", use issueName, otherwise use issueType
+//     let category = req.body.issueType;
+//     let issue_name = null;
 
-    if (isOtherIssueType && req.body.issueName) {
-      issue_name = req.body.issueName;
-      category = req.body.issueName;
-    }
+//     if (isOtherIssueType && req.body.issueName) {
+//       issue_name = req.body.issueName;
+//       category = req.body.issueName;
+//     }
 
-    const comment = req.body.comments || req.body.comment || '';
-    const priority = req.body.priority || 'Medium';
-    const priority_id = req.body.priority_id || null;
+//     const comment = req.body.comments || req.body.comment || '';
+//     const priority = req.body.priority || 'Medium';
+//     const priority_id = req.body.priority_id || null;
 
-    const clientUserInfo = {
-  id: req.body.client_id,
-  name: req.user.username,
-  email: req.body.email,
-  role: req.body.role,
+//     const clientUserInfo = {
+//   id: req.body.client_id,
+//   name: req.user.username,
+//   email: req.body.email,
+//   role: req.body.role,
   
-};
+// };
 
 
-    console.log('Mapped values:', {
-      moduleVal,
-      sub_module,
-      category,
-      issue_name,
-      comment,
-      priority,
-      priority_id,
-      isOtherIssueType
-    });
+//     console.log('Mapped values:', {
+//       moduleVal,
+//       sub_module,
+//       category,
+//       issue_name,
+//       comment,
+//       priority,
+//       priority_id,
+//       isOtherIssueType
+//     });
 
-    if (!moduleVal || !category || !comment) {
-      await t.rollback();
-      return res.status(400).json({
-        message: 'Module, category and comments are required',
-        received: { moduleVal, category, comment }
-      });
-    }
+//     if (!moduleVal || !category || !comment) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         message: 'Module, category and comments are required',
+//         received: { moduleVal, category, comment }
+//       });
+//     }
 
-    const userId = req.user && (req.user.id ?? req.user.user_id);
-    if (!userId) {
-      await t.rollback();
-      return res.status(401).json({ message: 'Unauthorized' });
-    }
+//     const userId = req.user && (req.user.id ?? req.user.user_id);
+//     if (!userId) {
+//       await t.rollback();
+//       return res.status(401).json({ message: 'Unauthorized' });
+//     }
 
-    // Use issueType_id for regular issues, not issueType name
-    const issue_type_id = isOtherIssueType ? null : (req.body.issueType_id ? parseInt(req.body.issueType_id) : null);
+//     // Use issueType_id for regular issues, not issueType name
+//     const issue_type_id = isOtherIssueType ? null : (req.body.issueType_id ? parseInt(req.body.issueType_id) : null);
 
-    // Determine SLA ID based on user_id and issue_type_id
-    let slaId = null;
+//     // Determine SLA ID based on user_id and issue_type_id
+//     let slaId = null;
 
-    if (req.body.sla_id && req.body.sla_id !== "00") {
-      // If SLA ID is explicitly provided in request, use it
-      const parsed = parseInt(req.body.sla_id, 10);
-      if (!Number.isNaN(parsed)) slaId = parsed;
-    } else if (issue_type_id && !isOtherIssueType) {
-      // For regular issue types, find SLA for this user + issue type combination
-      try {
-        const slaRec = await SLA.findOne({
-          where: {
-            user_id: userId,
-            issue_type_id: issue_type_id,
-            is_active: true
-          },
-          order: [
-            ['response_target_minutes', 'ASC'],
-            ['resolve_target_minutes', 'ASC']
-          ],
-          transaction: t
-        });
+//     if (req.body.sla_id && req.body.sla_id !== "00") {
+//       // If SLA ID is explicitly provided in request, use it
+//       const parsed = parseInt(req.body.sla_id, 10);
+//       if (!Number.isNaN(parsed)) slaId = parsed;
+//     } else if (issue_type_id && !isOtherIssueType) {
+//       // For regular issue types, find SLA for this user + issue type combination
+//       try {
+//         const slaRec = await SLA.findOne({
+//           where: {
+//             user_id: userId,
+//             issue_type_id: issue_type_id,
+//             is_active: true
+//           },
+//           order: [
+//             ['response_target_minutes', 'ASC'],
+//             ['resolve_target_minutes', 'ASC']
+//           ],
+//           transaction: t
+//         });
 
-        if (slaRec) {
-          slaId = slaRec.sla_id;
-          console.log(`Found SLA for user ${userId} and issue type ${issue_type_id}: SLA ID ${slaId}`);
-        } else {
-          console.log(`No active SLA found for user ${userId} and issue type ${issue_type_id}`);
-          slaId = 1;
-          console.log(`Using default SLA ID: ${slaId}`);
-        }
-      } catch (slaError) {
-        console.error('Error finding SLA:', slaError);
-        slaId = 1;
-        console.log(`Error occurred, using default SLA ID: ${slaId}`);
-      }
-    } else if (isOtherIssueType) {
-      // For "Other" issue types, use default SLA ID = 1
-      slaId = 1;
-      console.log(`Using default SLA ID for "Other" issue type: ${slaId}`);
-    } else {
-      // No issue_type_id and not "Other" type - use default
-      slaId = 1;
-      console.log(`Using default SLA ID as fallback: ${slaId}`);
-    }
+//         if (slaRec) {
+//           slaId = slaRec.sla_id;
+//           console.log(`Found SLA for user ${userId} and issue type ${issue_type_id}: SLA ID ${slaId}`);
+//         } else {
+//           console.log(`No active SLA found for user ${userId} and issue type ${issue_type_id}`);
+//           slaId = 1;
+//           console.log(`Using default SLA ID: ${slaId}`);
+//         }
+//       } catch (slaError) {
+//         console.error('Error finding SLA:', slaError);
+//         slaId = 1;
+//         console.log(`Error occurred, using default SLA ID: ${slaId}`);
+//       }
+//     } else if (isOtherIssueType) {
+//       // For "Other" issue types, use default SLA ID = 1
+//       slaId = 1;
+//       console.log(`Using default SLA ID for "Other" issue type: ${slaId}`);
+//     } else {
+//       // No issue_type_id and not "Other" type - use default
+//       slaId = 1;
+//       console.log(`Using default SLA ID as fallback: ${slaId}`);
+//     }
 
-    // Create ticket with mapped fields
-    const ticketData = {
+//     // Create ticket with mapped fields
+//     const ticketData = {
 
-      user_id: userId,
-     client_id: clientId,
-      module: moduleVal,
-      sub_module: sub_module,
-      category: category,
-      issue_type_id: issue_type_id,
-      issue_name: issue_name,
-      comment: comment,
-      status: 'Open',
-      client_sla_id: slaId,
-      priority: priority,
-      priority_id: priority_id,
-      is_other_issue: isOtherIssueType,
-      ticket_total_file_size: ticket_total_file_size,
-      owner_by: owner,
-      client_user_role: clientUserInfo.role,
-    client_user_name: clientUserInfo.name,
+//       user_id: userId,
+//      client_id: clientId,
+//       module: moduleVal,
+//       sub_module: sub_module,
+//       category: category,
+//       issue_type_id: issue_type_id,
+//       issue_name: issue_name,
+//       comment: comment,
+//       status: 'Open',
+//       client_sla_id: slaId,
+//       priority: priority,
+//       priority_id: priority_id,
+//       is_other_issue: isOtherIssueType,
+//       ticket_total_file_size: ticket_total_file_size,
+//       owner_by: owner,
+//       // client_user_role: clientUserInfo.role,
+//     // client_user_name: clientUserInfo.name,
 
-    };
+//     };
 
-    const ticket = await Ticket.create(ticketData, { transaction: t });
+//     const ticket = await Ticket.create(ticketData, { transaction: t });
 
-    // Handle file uploads
-    const ticketDocsMeta = [];
-    const files = req.files && Array.isArray(req.files) ? req.files : [];
-    if (files.length > 0) {
-      const docsToCreate = files.map((file) => {
-        return {
-          linked_id: ticket.ticket_id ?? ticket.id,
-          table_name: 'ticket',
-          type: (file.mimetype || '').startsWith('image/') ? 'image' : 'attachment',
-          doc_name: file.originalname || file.filename || 'upload',
-          mime_type: file.mimetype || 'application/octet-stream',
-          doc_base64: file.buffer ? file.buffer.toString('base64') : null,
-          created_by: req.user.username ?? String(userId),
-          status: 'active'
-        };
-      });
-      const created = await Document.bulkCreate(docsToCreate, { transaction: t });
-      created.forEach((d) => {
-        ticketDocsMeta.push({
-          document_id: d.document_id ?? d.id ?? null,
-          doc_name: d.doc_name,
-          mime_type: d.mime_type,
-          created_on: d.created_on
-        });
-      });
-    }
+//     // Handle file uploads
+//     const ticketDocsMeta = [];
+//     const files = req.files && Array.isArray(req.files) ? req.files : [];
+//     if (files.length > 0) {
+//       const docsToCreate = files.map((file) => {
+//         return {
+//           linked_id: ticket.ticket_id ?? ticket.id,
+//           table_name: 'ticket',
+//           type: (file.mimetype || '').startsWith('image/') ? 'image' : 'attachment',
+//           doc_name: file.originalname || file.filename || 'upload',
+//           mime_type: file.mimetype || 'application/octet-stream',
+//           doc_base64: file.buffer ? file.buffer.toString('base64') : null,
+//           created_by: req.user.username ?? String(userId),
+//           status: 'active'
+//         };
+//       });
+//       const created = await Document.bulkCreate(docsToCreate, { transaction: t });
+//       created.forEach((d) => {
+//         ticketDocsMeta.push({
+//           document_id: d.document_id ?? d.id ?? null,
+//           doc_name: d.doc_name,
+//           mime_type: d.mime_type,
+//           created_on: d.created_on
+//         });
+//       });
+//     }
 
-    await t.commit();
+//     await t.commit();
 
-    const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+//     const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
 
-    let slaRecord = null;
-    if (ticketPlain.sla_id) {
-      slaRecord = await SLA.findByPk(ticketPlain.sla_id, {
-        include: [
-          {
-            model: IssueType,
-            as: 'issue_type',
-            attributes: ['issue_type_id', 'name']
-          }
-        ]
-      });
-    }
+//     let slaRecord = null;
+//     if (ticketPlain.sla_id) {
+//       slaRecord = await SLA.findByPk(ticketPlain.sla_id, {
+//         include: [
+//           {
+//             model: IssueType,
+//             as: 'issue_type',
+//             attributes: ['issue_type_id', 'name']
+//           }
+//         ]
+//       });
+//     }
 
-    const { response_sla_met, resolve_sla_met } = await computeSLACompliance(ticketPlain);
-    const responseTicket = {
-      ...ticketPlain,
-      ticket_documents: ticketDocsMeta,
-      sla: slaRecord ? (slaRecord.toJSON ? slaRecord.toJSON() : slaRecord) : null,
-      response_sla_met,
-      resolve_sla_met,
-      is_other_issue: isOtherIssueType
-    };
+//     const { response_sla_met, resolve_sla_met } = await computeSLACompliance(ticketPlain);
+//     const responseTicket = {
+//       ...ticketPlain,
+//       ticket_documents: ticketDocsMeta,
+//       sla: slaRecord ? (slaRecord.toJSON ? slaRecord.toJSON() : slaRecord) : null,
+//       response_sla_met,
+//       resolve_sla_met,
+//       is_other_issue: isOtherIssueType
+//     };
 
-    // Log SLA assignment details
-    console.log('Ticket created with SLA details:', {
-      ticket_id: responseTicket.ticket_id,
-      user_id: userId,
-      issue_type_id: issue_type_id,
-      sla_id: slaId,
-      is_other_issue: isOtherIssueType
-    });
+//     // Log SLA assignment details
+//     console.log('Ticket created with SLA details:', {
+//       ticket_id: responseTicket.ticket_id,
+//       user_id: userId,
+//       issue_type_id: issue_type_id,
+//       sla_id: slaId,
+//       is_other_issue: isOtherIssueType
+//     });
 
-    // Notify admins
-    (async () => {
-      try {
-        const admins = await User.findAll({ where: { role_name: 'admin', is_active: true }, attributes: ['email', 'username'] });
-        const adminEmails = admins.map(a => a.email).filter(Boolean);
-        if (adminEmails.length > 0) {
-          const creator = { username: req.user.username || req.user.email, email: req.user.email };
-          const { subject, html, text } = ticketCreatedTemplate({ ticket: responseTicket, creator });
-          await sendMail({ to: adminEmails.join(','), subject, html, text });
-        }
-      } catch (mailErr) {
-        console.error('Mail error (ticket created):', mailErr && mailErr.message ? mailErr.message : mailErr);
-      }
-    })();
+//     // Notify admins
+//     (async () => {
+//       try {
+//         const admins = await User.findAll({ where: { role_name: 'admin', is_active: true }, attributes: ['email', 'username'] });
+//         const adminEmails = admins.map(a => a.email).filter(Boolean);
+//         if (adminEmails.length > 0) {
+//           const creator = { username: req.user.username || req.user.email, email: req.user.email };
+//           const { subject, html, text } = ticketCreatedTemplate({ ticket: responseTicket, creator });
+//           await sendMail({ to: adminEmails.join(','), subject, html, text });
+//         }
+//       } catch (mailErr) {
+//         console.error('Mail error (ticket created):', mailErr && mailErr.message ? mailErr.message : mailErr);
+//       }
+//     })();
 
-    return res.status(201).json({
-      message: 'Ticket raised successfully',
-      ticket: responseTicket,
-      sla_assignment: {
-        method: req.body.sla_id ? 'manual' : (isOtherIssueType ? 'default_other' : 'auto_user_issue_type'),
-        sla_id: slaId
-      }
-    });
-  } catch (err) {
-    console.error('raiseTicket error:', err);
-    try { await t.rollback(); } catch (e) { /* ignore */ }
-    return res.status(500).json({ message: 'Internal server error: ' + err.message });
-  }
-};
+//     return res.status(201).json({
+//       message: 'Ticket raised successfully',
+//       ticket: responseTicket,
+//       sla_assignment: {
+//         method: req.body.sla_id ? 'manual' : (isOtherIssueType ? 'default_other' : 'auto_user_issue_type'),
+//         sla_id: slaId
+//       }
+//     });
+//   } catch (err) {
+//     console.error('raiseTicket error:', err);
+//     try { await t.rollback(); } catch (e) { /* ignore */ }
+//     return res.status(500).json({ message: 'Internal server error: ' + err.message });
+//   }
+// };
+
+// working code 
+// exports.raiseTicket = async (req, res) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     console.log('raiseTicket - req.body keys:', Object.keys(req.body));
+//     console.log('raiseTicket - req.body:', req.body);
+//     console.log('raiseTicket - req.files count:', (req.files && req.files.length) || 0);
+
+//     // Map frontend field names to backend expected names
+//     const moduleVal = req.body.category;
+//     const sub_module = req.body.subCategory;
+//     const clientId = req.body.client_id;
+//     const ticket_total_file_size = req.body.ticket_total_file_size;
+//     const owner = req.body.name;
+
+//     // Store whether this is an "Other" issue type
+//     const isOtherIssueType = req.body.issueType === 'Other';
+
+//     // Handle issue type - if it's "Other", use issueName, otherwise use issueType
+//     let category = req.body.issueType;
+//     let issue_name = null;
+
+//     if (isOtherIssueType && req.body.issueName) {
+//       issue_name = req.body.issueName;
+//       category = req.body.issueName;
+//     }
+
+//     const comment = req.body.comments || req.body.comment || '';
+//     const priority = req.body.priority || 'Medium';
+//     const priority_id = req.body.priority_id || null;
+
+//     const clientUserInfo = {
+//       id: req.body.client_id,
+//       name: req.user.username,
+//       email: req.body.email,
+//       role: req.body.role,
+//     };
+
+//     console.log('Mapped values:', {
+//       moduleVal,
+//       sub_module,
+//       category,
+//       issue_name,
+//       comment,
+//       priority,
+//       priority_id,
+//       isOtherIssueType
+//     });
+
+//     if (!moduleVal || !category || !comment) {
+//       await t.rollback();
+//       return res.status(400).json({
+//         message: 'Module, category and comments are required',
+//         received: { moduleVal, category, comment }
+//       });
+//     }
+
+//     const userId = req.user && (req.user.id ?? req.user.user_id);
+//     if (!userId) {
+//       await t.rollback();
+//       return res.status(401).json({ message: 'Unauthorized' });
+//     }
+
+//     // Use issueType_id for regular issues, not issueType name
+//     const issue_type_id = isOtherIssueType ? null : (req.body.issueType_id ? parseInt(req.body.issueType_id) : null);
+
+//     // SLA DateTime calculations
+//     let slaResolveDateTime = null;
+//     let slaRespondDateTime = null;
+//     const nowTime = new Date();
+//     let indiaTime = new Date(nowTime.getTime() + 5.5 * 60 * 60 * 1000);
+
+//     // Determine SLA ID based on user_id and issue_type_id
+//     let slaId = null;
+//     let slaRecord = null; // We'll store the found SLA record to use for datetime calculations
+
+//     if (req.body.sla_id && req.body.sla_id !== "00") {
+//       // If SLA ID is explicitly provided in request, use it
+//       const parsed = parseInt(req.body.sla_id, 10);
+//       if (!Number.isNaN(parsed)) {
+//         slaId = parsed;
+//         // Fetch the SLA record to get target minutes
+//         slaRecord = await ClientSLA.findByPk(slaId, { transaction: t });
+//       }
+//     } else if (issue_type_id && !isOtherIssueType) {
+//       // For regular issue types, find SLA for this user + issue type combination
+//       try {
+//         slaRecord = await ClientSLA.findOne({
+//           where: {
+//             user_id: userId,
+//             issue_type_id: issue_type_id,
+//             is_active: true
+//           },
+//           order: [
+//             ['response_target_minutes', 'ASC'],
+//             ['resolve_target_minutes', 'ASC']
+//           ],
+//           transaction: t
+//         });
+
+//         if (slaRecord) {
+//           slaId = slaRecord.sla_id;
+//           console.log(`Found SLA for user ${userId} and issue type ${issue_type_id}: SLA ID ${slaId}`);
+//         } else {
+//           console.log(`No active SLA found for user ${userId} and issue type ${issue_type_id}`);
+//           slaId = 1;
+//           // Fetch default SLA record
+//           slaRecord = await ClientSLA.findByPk(slaId, { transaction: t });
+//           console.log(`Using default SLA ID: ${slaId}`);
+//         }
+//       } catch (slaError) {
+//         console.error('Error finding SLA:', slaError);
+//         slaId = 1;
+//         slaRecord = await ClientSLA.findByPk(slaId, { transaction: t });
+//         console.log(`Error occurred, using default SLA ID: ${slaId}`);
+//       }
+//     } else if (isOtherIssueType) {
+//       // For "Other" issue types, use default SLA ID = 1
+//       slaId = 1;
+//       slaRecord = await ClientSLA.findByPk(slaId, { transaction: t });
+//       console.log(`Using default SLA ID for "Other" issue type: ${slaId}`);
+//     } else {
+//       // No issue_type_id and not "Other" type - use default
+//       slaId = 1;
+//       slaRecord = await ClientSLA.findByPk(slaId, { transaction: t });
+//       console.log(`Using default SLA ID as fallback: ${slaId}`);
+//     }
+
+//     // Calculate SLA response and resolve datetimes if we have an SLA record
+//     if (slaRecord) {
+//       try {
+//         slaResolveDateTime = await calculateCompletionTime(
+//           indiaTime,
+//           slaRecord?.resolve_target_minutes || 2
+//         );
+//         slaRespondDateTime = await calculateCompletionTime(
+//           indiaTime,
+//           slaRecord?.response_target_minutes || 8
+//         );
+//         console.log('SLA DateTime calculations:', {
+//           resolve_target_minutes: slaRecord.resolve_target_minutes,
+//           response_target_minutes: slaRecord.response_target_minutes,
+//           sla_resolve_datetime: slaResolveDateTime?.completion_date_time_local,
+//           sla_response_datetime: slaRespondDateTime?.completion_date_time_local
+//         });
+//       } catch (calcError) {
+//         console.error('Error calculating SLA datetimes:', calcError);
+//         // Continue without SLA datetimes
+//       }
+//     }
+
+//     // Create ticket with mapped fields
+//     const ticketData = {
+//       user_id: userId,
+//       client_id: clientId,
+//       module: moduleVal,
+//       sub_module: sub_module,
+//       category: category,
+//       issue_type_id: issue_type_id,
+//       issue_name: issue_name,
+//       comment: comment,
+//       status: 'Open',
+//       client_sla_id: slaId,
+//       priority: priority,
+//       priority_id: priority_id,
+//       is_other_issue: isOtherIssueType,
+//       ticket_total_file_size: ticket_total_file_size,
+//       owner_by: owner,
+//       // Add SLA datetime fields
+//       sla_response_datetime: slaRespondDateTime?.completion_date_time_local || null,
+//       sla_resolve_datetime: slaResolveDateTime?.completion_date_time_local || null,
+//     };
+
+//     const ticket = await Ticket.create(ticketData, { transaction: t });
+
+//     // Handle file uploads
+//     const ticketDocsMeta = [];
+//     const files = req.files && Array.isArray(req.files) ? req.files : [];
+//     if (files.length > 0) {
+//       const docsToCreate = files.map((file) => {
+//         return {
+//           linked_id: ticket.ticket_id ?? ticket.id,
+//           table_name: 'ticket',
+//           type: (file.mimetype || '').startsWith('image/') ? 'image' : 'attachment',
+//           doc_name: file.originalname || file.filename || 'upload',
+//           mime_type: file.mimetype || 'application/octet-stream',
+//           doc_base64: file.buffer ? file.buffer.toString('base64') : null,
+//           created_by: req.user.username ?? String(userId),
+//           status: 'active'
+//         };
+//       });
+//       const created = await Document.bulkCreate(docsToCreate, { transaction: t });
+//       created.forEach((d) => {
+//         ticketDocsMeta.push({
+//           document_id: d.document_id ?? d.id ?? null,
+//           doc_name: d.doc_name,
+//           mime_type: d.mime_type,
+//           created_on: d.created_on
+//         });
+//       });
+//     }
+
+//     await t.commit();
+
+//     const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+
+//     let finalSlaRecord = null;
+//     if (ticketPlain.client_sla_id) {
+//       finalSlaRecord = await SLA.findByPk(ticketPlain.client_sla_id, {
+//         include: [
+//           {
+//             model: IssueType,
+//             as: 'issue_type',
+//             attributes: ['issue_type_id', 'name']
+//           }
+//         ]
+//       });
+//     }
+
+//     const { response_sla_met, resolve_sla_met } = await computeSLACompliance(ticketPlain);
+//     const responseTicket = {
+//       ...ticketPlain,
+//       ticket_documents: ticketDocsMeta,
+//       sla: finalSlaRecord ? (finalSlaRecord.toJSON ? finalSlaRecord.toJSON() : finalSlaRecord) : null,
+//       response_sla_met,
+//       resolve_sla_met,
+//       is_other_issue: isOtherIssueType
+//     };
+
+//     // Log SLA assignment details
+//     console.log('Ticket created with SLA details:', {
+//       ticket_id: responseTicket.ticket_id,
+//       user_id: userId,
+//       issue_type_id: issue_type_id,
+//       sla_id: slaId,
+//       is_other_issue: isOtherIssueType,
+//       sla_response_datetime: responseTicket.sla_response_datetime,
+//       sla_resolve_datetime: responseTicket.sla_resolve_datetime
+//     });
+
+//     // Notify admins
+//     (async () => {
+//       try {
+//         const admins = await User.findAll({ where: { role_name: 'admin', is_active: true }, attributes: ['email', 'username'] });
+//         const adminEmails = admins.map(a => a.email).filter(Boolean);
+//         if (adminEmails.length > 0) {
+//           const creator = { username: req.user.username || req.user.email, email: req.user.email };
+//           const { subject, html, text } = ticketCreatedTemplate({ ticket: responseTicket, creator });
+//           await sendMail({ to: adminEmails.join(','), subject, html, text });
+//         }
+//       } catch (mailErr) {
+//         console.error('Mail error (ticket created):', mailErr && mailErr.message ? mailErr.message : mailErr);
+//       }
+//     })();
+
+//     return res.status(201).json({
+//       message: 'Ticket raised successfully',
+//       ticket: responseTicket,
+//       sla_assignment: {
+//         method: req.body.sla_id ? 'manual' : (isOtherIssueType ? 'default_other' : 'auto_user_issue_type'),
+//         sla_id: slaId
+//       }
+//     });
+//   } catch (err) {
+//     console.error('raiseTicket error:', err);
+//     try { await t.rollback(); } catch (e) { /* ignore */ }
+//     return res.status(500).json({ message: 'Internal server error: ' + err.message });
+//   }
+// };
 
 
 
@@ -4804,6 +5074,260 @@ exports.raiseTicket = async (req, res) => {
 //   }
 // };
 
+
+exports.raiseTicket = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    console.log('raiseTicket - req.body keys:', Object.keys(req.body));
+    console.log('raiseTicket - req.body:', req.body);
+    console.log('raiseTicket - req.files count:', (req.files && req.files.length) || 0);
+
+    // Map frontend field names to backend expected names
+    const moduleVal = req.body.category;
+    const sub_module = req.body.subCategory;
+    const clientId = req.body.client_id;
+    const ticket_total_file_size = req.body.ticket_total_file_size;
+    const owner = req.body.name;
+
+    // Store whether this is an "Other" issue type
+    const isOtherIssueType = req.body.issueType === 'Other';
+
+    // Handle issue type - if it's "Other", use issueName, otherwise use issueType
+    let category = req.body.issueType;
+    let issue_name = null;
+
+    if (isOtherIssueType && req.body.issueName) {
+      issue_name = req.body.issueName;
+      category = req.body.issueName;
+    }
+
+    const comment = req.body.comments || req.body.comment || '';
+    const priority = req.body.priority || 'Medium';
+    const priority_id = req.body.priority_id || null;
+
+    const clientUserInfo = {
+      id: req.body.client_id,
+      name: req.user.username,
+      email: req.body.email,
+      role: req.body.role,
+    };
+
+    console.log('Mapped values:', {
+      moduleVal,
+      sub_module,
+      category,
+      issue_name,
+      comment,
+      priority,
+      priority_id,
+      isOtherIssueType
+    });
+
+    if (!moduleVal || !category || !comment) {
+      await t.rollback();
+      return res.status(400).json({
+        message: 'Module, category and comments are required',
+        received: { moduleVal, category, comment }
+      });
+    }
+
+    const userId = req.user && (req.user.id ?? req.user.user_id);
+    if (!userId) {
+      await t.rollback();
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    // Use issueType_id for regular issues, not issueType name
+    const issue_type_id = isOtherIssueType ? null : (req.body.issueType_id ? parseInt(req.body.issueType_id) : null);
+
+    // SLA DateTime calculations
+    let slaResolveDateTime = null;
+    let slaRespondDateTime = null;
+    const nowTime = new Date();
+    let indiaTime = new Date(nowTime.getTime() + 5.5 * 60 * 60 * 1000);
+
+    // Determine SLA ID based on client_id and issue_type_id (like in the first code)
+    let clientSlaId = null;
+    let clientSLARecord = null;
+
+    // Find client SLA if issue type is provided (like in the first code)
+    if (issue_type_id && !isOtherIssueType) {
+      clientSLARecord = await ClientSLA.findOne({
+        where: {
+          client_id: clientId,
+          issue_type_id: issue_type_id,
+          is_active: true,
+        },
+        order: [
+          ["response_target_minutes", "ASC"],
+          ["resolve_target_minutes", "ASC"],
+        ],
+        transaction: t,
+      });
+
+      if (clientSLARecord) {
+        clientSlaId = clientSLARecord.client_sla_id;
+        console.log(`Found ClientSLA for client ${clientId} and issue type ${issue_type_id}: ClientSLA ID ${clientSlaId}`);
+      }
+    }
+
+    // Set default clientSlaId to 4 for "Other" issue types (like in the first code)
+    if (isOtherIssueType && !clientSlaId) {
+      clientSlaId = 4;
+      console.log(`Using default ClientSLA ID for "Other" issue type: ${clientSlaId}`);
+      
+      // Fetch the default SLA record for datetime calculations
+      clientSLARecord = await ClientSLA.findByPk(clientSlaId, { transaction: t });
+    }
+
+    // If no SLA found and not "Other" type, use default
+    if (!clientSlaId && !isOtherIssueType) {
+      clientSlaId = 4; // or whatever your default ClientSLA ID is
+      clientSLARecord = await ClientSLA.findByPk(clientSlaId, { transaction: t });
+      console.log(`Using default ClientSLA ID as fallback: ${clientSlaId}`);
+    }
+
+    // Calculate SLA response and resolve datetimes if we have an ClientSLA record
+    if (clientSLARecord) {
+      try {
+        slaResolveDateTime = await calculateCompletionTime(
+          indiaTime,
+          clientSLARecord?.resolve_target_minutes || 2
+        );
+        slaRespondDateTime = await calculateCompletionTime(
+          indiaTime,
+          clientSLARecord?.response_target_minutes || 8
+        );
+        console.log('ClientSLA DateTime calculations:', {
+          resolve_target_minutes: clientSLARecord.resolve_target_minutes,
+          response_target_minutes: clientSLARecord.response_target_minutes,
+          sla_resolve_datetime: slaResolveDateTime?.completion_date_time_local,
+          sla_response_datetime: slaRespondDateTime?.completion_date_time_local
+        });
+      } catch (calcError) {
+        console.error('Error calculating SLA datetimes:', calcError);
+        // Continue without SLA datetimes
+      }
+    }
+
+    // Create ticket with mapped fields
+    const ticketData = {
+      user_id: userId,
+      client_id: clientId,
+      module: moduleVal,
+      sub_module: sub_module,
+      category: category,
+      issue_type_id: issue_type_id,
+      issue_name: issue_name,
+      comment: comment,
+      status: 'Open',
+      client_sla_id: clientSlaId, // Using client_sla_id from ClientSLA
+      priority: priority,
+      priority_id: priority_id,
+      is_other_issue: isOtherIssueType,
+      ticket_total_file_size: ticket_total_file_size,
+      owner_by: owner,
+      // Add SLA datetime fields
+      sla_response_datetime: slaRespondDateTime?.completion_date_time_local || null,
+      sla_resolve_datetime: slaResolveDateTime?.completion_date_time_local || null,
+    };
+
+    const ticket = await Ticket.create(ticketData, { transaction: t });
+
+    // Handle file uploads
+    const ticketDocsMeta = [];
+    const files = req.files && Array.isArray(req.files) ? req.files : [];
+    if (files.length > 0) {
+      const docsToCreate = files.map((file) => {
+        return {
+          linked_id: ticket.ticket_id ?? ticket.id,
+          table_name: 'ticket',
+          type: (file.mimetype || '').startsWith('image/') ? 'image' : 'attachment',
+          doc_name: file.originalname || file.filename || 'upload',
+          mime_type: file.mimetype || 'application/octet-stream',
+          doc_base64: file.buffer ? file.buffer.toString('base64') : null,
+          created_by: req.user.username ?? String(userId),
+          status: 'active'
+        };
+      });
+      const created = await Document.bulkCreate(docsToCreate, { transaction: t });
+      created.forEach((d) => {
+        ticketDocsMeta.push({
+          document_id: d.document_id ?? d.id ?? null,
+          doc_name: d.doc_name,
+          mime_type: d.mime_type,
+          created_on: d.created_on
+        });
+      });
+    }
+
+    await t.commit();
+
+    const ticketPlain = ticket.toJSON ? ticket.toJSON() : ticket;
+
+    let finalClientSlaRecord = null;
+    if (ticketPlain.client_sla_id) {
+      finalClientSlaRecord = await ClientSLA.findByPk(ticketPlain.client_sla_id, {
+        include: [
+          {
+            model: IssueType,
+            as: "issue_type",
+            attributes: ["issue_type_id", "name"],
+          },
+        ],
+      });
+    }
+
+    const { response_sla_met, resolve_sla_met } = await computeSLACompliance(ticketPlain);
+    const responseTicket = {
+      ...ticketPlain,
+      ticket_documents: ticketDocsMeta,
+      client_sla: finalClientSlaRecord ? (finalClientSlaRecord.toJSON ? finalClientSlaRecord.toJSON() : finalClientSlaRecord) : null,
+      response_sla_met,
+      resolve_sla_met,
+      is_other_issue: isOtherIssueType
+    };
+
+    // Log ClientSLA assignment details
+    console.log('Ticket created with ClientSLA details:', {
+      ticket_id: responseTicket.ticket_id,
+      client_id: clientId,
+      issue_type_id: issue_type_id,
+      client_sla_id: clientSlaId,
+      is_other_issue: isOtherIssueType,
+      sla_response_datetime: responseTicket.sla_response_datetime,
+      sla_resolve_datetime: responseTicket.sla_resolve_datetime
+    });
+
+    // Notify admins
+    (async () => {
+      try {
+        const admins = await User.findAll({ where: { role_name: 'admin', is_active: true }, attributes: ['email', 'username'] });
+        const adminEmails = admins.map(a => a.email).filter(Boolean);
+        if (adminEmails.length > 0) {
+          const creator = { username: req.user.username || req.user.email, email: req.user.email };
+          const { subject, html, text } = ticketCreatedTemplate({ ticket: responseTicket, creator });
+          await sendMail({ to: adminEmails.join(','), subject, html, text });
+        }
+      } catch (mailErr) {
+        console.error('Mail error (ticket created):', mailErr && mailErr.message ? mailErr.message : mailErr);
+      }
+    })();
+
+    return res.status(201).json({
+      message: 'Ticket raised successfully',
+      ticket: responseTicket,
+      sla_assignment: {
+        method: isOtherIssueType ? 'default_other' : 'auto_client_issue_type',
+        client_sla_id: clientSlaId
+      }
+    });
+  } catch (err) {
+    console.error('raiseTicket error:', err);
+    try { await t.rollback(); } catch (e) { /* ignore */ }
+    return res.status(500).json({ message: 'Internal server error: ' + err.message });
+  }
+};
 
 exports.replyToTicket = async (req, res) => {
   const t = await sequelize.transaction();
