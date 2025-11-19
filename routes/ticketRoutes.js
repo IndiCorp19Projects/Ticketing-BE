@@ -8,6 +8,7 @@ const upload = require('../middleware/uploadMemory');
 router.use(combinedAuth);
 
 router.post('/raise', upload.array('files'), ticketController.raiseTicket);
+router.post('/raise/TT', upload.array('files'), ticketController.createTicketByTT);
 router.get('/my-tickets', ticketController.getUserTickets);
 router.get('/:ticketId', ticketController.getTicketById);
 router.post('/:ticketId/reply', upload.array('files'), ticketController.replyToTicket);

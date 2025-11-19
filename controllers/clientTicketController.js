@@ -953,6 +953,7 @@ async function createTicket(req, res) {
 
 
 
+
 // async function listTickets(req, res) {
 //   try {
 //     const clientId = req.client_user.client_id;
@@ -4689,19 +4690,21 @@ async function replyToTicket(req, res) {
     }
 
     // ========== UPDATE TICKET TOTAL FILE SIZE ==========
-    // if (hasFileSizeAction) {
-    //   if (ticket.ticket_total_file_size !== ticket_total_file_size) {
-    //     changes.ticket_total_file_size = {
-    //       from: ticket.ticket_total_file_size,
-    //       to: ticket_total_file_size
-    //     };
-    //     hasChanges = true;
-    //     ticket.ticket_total_file_size = ticket_total_file_size;
+    if (hasFileSizeAction) {
+      if (ticket.ticket_total_file_size !== ticket_total_file_size) {
+        changes.ticket_total_file_size = {
+          from: ticket.ticket_total_file_size,
+          to: ticket_total_file_size
+        };
+        hasChanges = true;
+        ticket.ticket_total_file_size = ticket_total_file_size;
         
-    //     // Add file size update log
-    //     actionLogs.push(`${clientUserName} updated total file size from ${ticket.ticket_total_file_size} to ${ticket_total_file_size}`);
-    //   }
-    // }
+        // Add file size update log
+         actionLogs.push( );
+
+          // actionLogs.push(`${clientUserName} updated total file size from ${ticket.ticket_total_file_size} to ${ticket_total_file_size}`);
+      }
+    }
 
     // ========== LOG MESSAGE ADDITION ==========
     if (hasMessage) {
